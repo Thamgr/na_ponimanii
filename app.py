@@ -1,7 +1,8 @@
 import logging
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from config import API_HOST, API_PORT
+from config import API_HOST, API_PORT, TOKEN
 
 # Enable logging
 logging.basicConfig(
@@ -21,23 +22,35 @@ app = FastAPI(
 @app.post("/webhook")
 async def webhook(request: Request):
     """
-    Endpoint to receive messages from Telegram bot.
+    Endpoint to receive Telegram updates from the bot.
     
-    Validates if the request body contains a 'message' field.
-    Returns 200 OK with {"status":"ok"} if successful.
-    Returns 400 with {"error":"no message"} if validation fails.
+    Extracts the message text and sends a response back to the user
+    via the Telegram Bot API.
     """
     try:
-        # Parse request body as JSON
-        data = await request.json()
+        # Parse request body as JSON (this should be the Telegram update)
+        update = await request.json()
         
-        # Validate if 'message' field exists
-        if 'message' not in data:
+        # Validate if update contains a message
+        if 'message' not in update:
             logger.warning("Received webhook request without 'message' field")
             raise HTTPException(status_code=400, detail="no message")
         
+        # Extract message details
+        message = update['message']
+        if 'text' not in message:
+            logger.warning("Received message without 'text' field")
+            raise HTTPException(status_code=400, detail="no text in message")
+        
+        chat_id = message['chat']['id']
+        message_text = message['text']
+        
         # Log the received message
-        logger.info(f"Received message: {data['message']}")
+        logger.info(f"Received message from chat {chat_id}: {message_text}")
+        
+        # Send response back to the user via Telegram Bot API
+        response_text = f"Получено: {message_text}"
+        await send_telegram_message(chat_id, response_text)
         
         # Return success response
         return {"status": "ok"}
@@ -54,6 +67,38 @@ async def http_exception_handler(request, exc):
         status_code=exc.status_code,
         content={"error": exc.detail}
     )
+
+async def send_telegram_message(chat_id: int, text: str):
+    """
+    Send a message to a Telegram chat using the Telegram Bot API.
+    
+    Args:
+        chat_id: The ID of the chat to send the message to
+        text: The text of the message to send
+    """
+    telegram_api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    
+    # Prepare the request data
+    data = {
+        "chat_id": chat_id,
+        "text": text
+    }
+    
+    # Send the request to the Telegram Bot API
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(telegram_api_url, json=data)
+            response_data = response.json()
+            
+            if not response.is_success or not response_data.get('ok'):
+                logger.error(f"Failed to send message to Telegram: {response_data}")
+                return False
+            
+            logger.info(f"Successfully sent message to chat {chat_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending message to Telegram: {e}")
+            return False
 
 @app.get("/")
 async def root():

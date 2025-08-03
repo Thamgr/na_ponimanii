@@ -1,5 +1,5 @@
 import logging
-import aiohttp
+import httpx
 import json
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -20,32 +20,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # Define a function to handle messages
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Forward the user message to the FastAPI server and reply with the response."""
-    message_text = update.message.text
-    user_id = update.effective_user.id
+    """Forward the entire update to the FastAPI server."""
+    # Convert the update to a dictionary
+    update_dict = update.to_dict()
     
-    # Prepare the data to send to the FastAPI server
-    data = {
-        "message": message_text,
-        "user_id": user_id,
-        "chat_id": update.effective_chat.id
-    }
-    
-    # Send the message to the FastAPI server
+    # Send the update to the FastAPI server
     try:
         webhook_url = f"http://{API_HOST}:{API_PORT}/webhook"
-        async with aiohttp.ClientSession() as session:
-            async with session.post(webhook_url, json=data) as response:
-                if response.status == 200:
-                    response_data = await response.json()
-                    logger.info(f"Received response from server: {response_data}")
-                    await update.message.reply_text('Сообщение получено сервером!')
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Error from server: {error_text}")
-                    await update.message.reply_text('Произошла ошибка при обработке сообщения.')
+        async with httpx.AsyncClient() as client:
+            response = await client.post(webhook_url, json=update_dict)
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                logger.info(f"Received response from server: {response_data}")
+                # Note: We don't need to reply here as the server will send the response directly
+            else:
+                error_text = response.text
+                logger.error(f"Error from server: {error_text}")
+                await update.message.reply_text('Произошла ошибка при обработке сообщения.')
     except Exception as e:
-        logger.error(f"Failed to send message to server: {e}")
+        logger.error(f"Failed to send update to server: {e}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
 # Main function to run the bot

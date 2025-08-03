@@ -224,15 +224,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Extract the topic
         topic = callback_data[4:]
         
-        # Create a fake message object with the /add command
-        fake_message = update.effective_message.copy()
-        fake_message.text = f"/add {topic}"
+        # Send a message to the chat as if the user typed it
+        command_text = f"/add {topic}"
         
-        # Create a fake update object
-        fake_update = Update(update.update_id, message=fake_message)
+        # Get the chat ID
+        chat_id = update.effective_chat.id
         
-        # Call the add_topic_command function
-        await add_topic_command(fake_update, context)
+        # Send the message to the chat
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=command_text
+        )
+        
+        # Inform the user that the command was sent
+        await query.answer(f"Команда '{command_text}' отправлена")
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
 

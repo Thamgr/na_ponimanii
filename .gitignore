@@ -40,6 +40,5 @@ var/
 .vscode/
 *.swp
 *.swo
-
 # Configuration files with sensitive data
-config.py
+.env

@@ -1,6 +1,7 @@
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from config import TOKEN
 
 # Enable logging
 logging.basicConfig(
@@ -23,9 +24,8 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Main function to run the bot
 def main() -> None:
     """Start the bot."""
-    # Create the Application and pass it your bot's token
-    # Replace "YOUR_TOKEN" with the token obtained from BotFather
-    application = Application.builder().token("8248625954:AAGH9kgm-USzVzMFuhRPSsgyHwStfEjaJxo").build()
+    # Create the Application and pass it your bot's token from config.py
+    application = Application.builder().token(TOKEN).build()
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))

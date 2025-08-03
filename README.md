@@ -23,10 +23,12 @@
 pip install -r requirements.txt
 ```
 
-2. Откройте файл `telegram_bot.py` и замените строку `"YOUR_TOKEN"` на полученный от BotFather токен:
+2. Откройте файл `config.py` и замените значение переменной `TOKEN` на полученный от BotFather токен:
 ```python
-application = Application.builder().token("ВАШ_ТОКЕН_ЗДЕСЬ").build()
+TOKEN = "ВАШ_ТОКЕН_ЗДЕСЬ"
 ```
+
+Примечание: Файл `config.py` добавлен в `.gitignore`, поэтому ваш токен не будет отправлен в репозиторий при пуше на GitHub.
 
 #### Запуск бота
 

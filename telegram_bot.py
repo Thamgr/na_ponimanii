@@ -239,11 +239,12 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await update.message.reply_text('Произошла ошибка при получении темы.')
     except Exception as e:
         logger.error(f"Failed to send random topic request to server: {e}")
+        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+
 # Define a function to handle button clicks
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button clicks for adding related topics."""
     query = update.callback_query
-    await query.answer()
     
     # Get the callback data
     callback_data = query.data
@@ -260,19 +261,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Add the topic
         success = await add_topic(user_id, topic, chat_id, context)
         
-        # If successful, update the message to indicate the topic was added
+        # Just answer the callback query with a notification
         if success:
-            try:
-                # Try to edit the message to indicate the topic was added
-                current_text = query.message.text
-                await query.edit_message_text(
-                    text=f"{current_text}\n\n✅ Тема '{topic}' добавлена в ваш список."
-                )
-            except Exception as e:
-                logger.error(f"Error updating message: {e}")
+            await query.answer(f"Тема '{topic}' добавлена в ваш список!")
+        else:
+            await query.answer("Не удалось добавить тему")
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
-        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
 
 # Main function to run the bot

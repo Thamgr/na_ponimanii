@@ -179,9 +179,11 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         # Create keyboard with buttons for each related topic
                         keyboard = []
                         for related_topic in related_topics:
-                            # Create a callback data with the topic
-                            callback_data = f"add_{related_topic}"
-                            keyboard.append([InlineKeyboardButton(related_topic, callback_data=callback_data)])
+                            # Create a button that will insert the command in the chat input
+                            keyboard.append([InlineKeyboardButton(
+                                related_topic,
+                                switch_inline_query_current_chat=f"/add {related_topic}"
+                            )])
                         
                         # Add a message about the buttons
                         message += "\n\nВыберите смежную тему для добавления:"
@@ -210,36 +212,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         logger.error(f"Failed to send random topic request to server: {e}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
-# Define a function to handle button clicks
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle button clicks for adding related topics."""
-    query = update.callback_query
-    await query.answer()
-    
-    # Get the callback data
-    callback_data = query.data
-    
-    # Check if it's an add topic callback
-    if callback_data.startswith("add_"):
-        # Extract the topic
-        topic = callback_data[4:]
-        
-        # Send a message to the chat as if the user typed it
-        command_text = f"/add {topic}"
-        
-        # Get the chat ID
-        chat_id = update.effective_chat.id
-        
-        # Send the message to the chat
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=command_text
-        )
-        
-        # Inform the user that the command was sent
-        await query.answer(f"Команда '{command_text}' отправлена")
-    else:
-        logger.warning(f"Unknown callback data: {callback_data}")
 
 # Main function to run the bot
 def main() -> None:
@@ -252,7 +224,6 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_topic_command))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
-    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot until the user presses Ctrl-C

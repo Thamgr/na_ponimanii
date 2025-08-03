@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import List, Dict, Any
+import random
+from typing import List, Dict, Any, Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -32,6 +33,7 @@ class Topic(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
     title = Column(String, index=True)
+    explanation = Column(Text, nullable=True)  # New column for storing explanations
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -40,6 +42,7 @@ class Topic(Base):
             "id": self.id,
             "user_id": self.user_id,
             "title": self.title,
+            "explanation": self.explanation,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
@@ -76,13 +79,14 @@ def get_db() -> Session:
         raise
 
 
-def add_topic(user_id: int, title: str) -> Topic:
+def add_topic(user_id: int, title: str, explanation: Optional[str] = None) -> Topic:
     """
     Add a new topic to the database.
     
     Args:
         user_id (int): ID of the user who created the topic
         title (str): Title of the topic
+        explanation (Optional[str]): Explanation of the topic, if available
     
     Returns:
         Topic: The created topic
@@ -90,7 +94,7 @@ def add_topic(user_id: int, title: str) -> Topic:
     db = get_db()
     try:
         # Create a new Topic instance
-        topic = Topic(user_id=user_id, title=title)
+        topic = Topic(user_id=user_id, title=title, explanation=explanation)
         
         # Add to the session and commit
         db.add(topic)
@@ -101,6 +105,104 @@ def add_topic(user_id: int, title: str) -> Topic:
     finally:
         db.close()
 
+
+def get_random_topic_for_user(user_id: int) -> Optional[Topic]:
+    """
+    Get a random topic for a specific user.
+    
+    Args:
+        user_id (int): ID of the user
+    
+    Returns:
+        Optional[Topic]: A random topic, or None if no topics found
+    """
+    db = get_db()
+    try:
+        # Count topics for the user
+        topic_count = db.query(Topic).filter(Topic.user_id == user_id).count()
+        
+        if topic_count == 0:
+            return None
+        
+        # Get a random offset
+        random_offset = random.randint(0, topic_count - 1)
+        
+        # Get a random topic
+        topic = db.query(Topic).filter(Topic.user_id == user_id).offset(random_offset).first()
+        
+        return topic
+    finally:
+        db.close()
+
+def delete_topic(topic_id: int) -> bool:
+    """
+    Delete a topic from the database.
+    
+    Args:
+        topic_id (int): ID of the topic to delete
+    
+    Returns:
+        bool: True if the topic was deleted, False otherwise
+    """
+    db = get_db()
+    try:
+        # Find the topic
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        
+        if not topic:
+            return False
+        
+        # Delete the topic
+        db.delete(topic)
+        db.commit()
+        
+        return True
+    finally:
+        db.close()
+
+def update_topic_explanation(topic_id: int, explanation: str) -> Optional[Topic]:
+    """
+    Update the explanation for an existing topic.
+    
+    Args:
+        topic_id (int): ID of the topic to update
+        explanation (str): New explanation for the topic
+    
+    Returns:
+        Optional[Topic]: The updated topic, or None if not found
+    """
+    db = get_db()
+    try:
+        # Find the topic
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        
+        if topic:
+            # Update the explanation
+            topic.explanation = explanation
+            db.commit()
+            db.refresh(topic)
+            
+        return topic
+    finally:
+        db.close()
+
+def get_topic(topic_id: int) -> Optional[Topic]:
+    """
+    Get a topic by ID.
+    
+    Args:
+        topic_id (int): ID of the topic to retrieve
+    
+    Returns:
+        Optional[Topic]: The topic, or None if not found
+    """
+    db = get_db()
+    try:
+        # Find the topic
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        return topic
+    finally:
+        db.close()
 
 def list_topics(user_id: int) -> List[Dict[str, Any]]:
     """

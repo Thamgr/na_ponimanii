@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Define a function to handle the /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
-    await update.message.reply_text('Привет, я твой бот! Используй /add <тема> чтобы добавить новую тему для изучения. Используй /list чтобы увидеть свои темы.')
+    await update.message.reply_text('Привет, я твой бот! Используй /add <тема> чтобы добавить новую тему для изучения. Используй /list чтобы увидеть свои темы. Используй /topic чтобы получить объяснение случайной темы.')
 
 # Define a function to handle messages
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -78,7 +78,11 @@ async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 logger.info(f"Add topic processed: {response_data}")
                 
                 # Format and send message to the user
-                await update.message.reply_text(f"Тема сохранена: {response_data['title']}")
+                topic_id = response_data['id']
+                await update.message.reply_text(
+                    f"Тема сохранена: {response_data['title']}\n\n"
+                    f"Я подготовлю объяснение этой темы. Скоро вы сможете его увидеть, используя команду /topic {topic_id}"
+                )
             else:
                 error_text = response.text
                 logger.error(f"Error from server: {error_text}")
@@ -114,8 +118,11 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 if topics:
                     # Format the topics list
                     topics_text = "Ваши темы:\n\n"
-                    for i, topic in enumerate(topics, 1):
-                        topics_text += f"{i}. {topic['title']}\n"
+                    for topic in topics:
+                        topic_id = topic['id']
+                        has_explanation = topic.get('explanation') is not None
+                        explanation_status = "✅" if has_explanation else "⏳"
+                        topics_text += f"{topic_id}. {topic['title']} {explanation_status}\n"
                     
                     # Send the list
                     await update.message.reply_text(topics_text)
@@ -130,6 +137,59 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Failed to send list topics request to server: {e}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
+# Define a function to handle the /topic command
+async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /topic command to get a random topic explanation and remove it."""
+    # Get the user ID
+    user_id = update.effective_user.id
+    
+    # Prepare the data to send to the FastAPI server
+    data = {
+        "user_id": user_id
+    }
+    
+    # Send the request to the FastAPI server
+    try:
+        random_topic_url = f"http://{API_HOST}:{API_PORT}/bot/random_topic"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(random_topic_url, json=data)
+            
+            if response.status_code == 200:
+                # Check if we got a topic
+                if not response.content or response.content == b'null':
+                    await update.message.reply_text('У вас нет сохраненных тем. Используйте /add <тема> чтобы добавить тему для изучения.')
+                    return
+                
+                topic_data = response.json()
+                logger.info(f"Random topic processed: {topic_data}")
+                
+                # Format and send message to the user
+                title = topic_data['title']
+                explanation = topic_data.get('explanation')
+                
+                if explanation:
+                    # Send the topic title and explanation
+                    await update.message.reply_text(
+                        f"📚 <b>Тема: {title}</b>\n\n{explanation}\n\n"
+                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
+                        parse_mode='HTML'
+                    )
+                else:
+                    # No explanation available
+                    await update.message.reply_text(
+                        f"📚 <b>Тема: {title}</b>\n\n"
+                        f"К сожалению, не удалось сгенерировать объяснение для этой темы.\n\n"
+                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
+                        parse_mode='HTML'
+                    )
+            else:
+                error_text = response.text
+                logger.error(f"Error from server: {error_text}")
+                await update.message.reply_text('Произошла ошибка при получении темы.')
+    except Exception as e:
+        logger.error(f"Failed to send random topic request to server: {e}")
+        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+
 # Main function to run the bot
 def main() -> None:
     """Start the bot."""
@@ -140,6 +200,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("add", add_topic_command))
     application.add_handler(CommandHandler("list", list_topics_command))
+    application.add_handler(CommandHandler("topic", get_topic_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot until the user presses Ctrl-C

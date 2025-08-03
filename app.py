@@ -1,11 +1,12 @@
 import logging
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from config import API_HOST, API_PORT, TOKEN
-from database import init_db, add_topic, list_topics
+from database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
+from llm_service import generate_explanation, LLMServiceException
 
 # Enable logging
 logging.basicConfig(
@@ -40,6 +41,7 @@ class TopicResponse(BaseModel):
     id: int
     user_id: int
     title: str
+    explanation: Optional[str] = None
     created_at: Optional[str] = None
 
 class TopicListResponse(BaseModel):
@@ -136,8 +138,32 @@ async def root():
     """Root endpoint for health check."""
     return {"status": "running"}
 
+async def generate_and_save_explanation(topic_id: int, topic_title: str):
+    """
+    Background task to generate an explanation for a topic and save it to the database.
+    
+    Args:
+        topic_id: The ID of the topic
+        topic_title: The title of the topic
+    """
+    try:
+        # Generate explanation
+        logger.info(f"Generating explanation for topic: {topic_title}")
+        explanation = generate_explanation(topic_title)
+        
+        # Save explanation to database
+        logger.info(f"Saving explanation for topic ID: {topic_id}")
+        updated_topic = update_topic_explanation(topic_id, explanation)
+        
+        if not updated_topic:
+            logger.error(f"Failed to update topic with ID: {topic_id}")
+    except LLMServiceException as e:
+        logger.error(f"LLM service error for topic '{topic_title}': {e}")
+    except Exception as e:
+        logger.error(f"Error generating explanation for topic '{topic_title}': {e}")
+
 @app.post("/topics", response_model=TopicResponse)
-async def create_topic(topic: TopicCreate):
+async def create_topic(topic: TopicCreate, background_tasks: BackgroundTasks):
     """
     Create a new topic.
     
@@ -151,11 +177,19 @@ async def create_topic(topic: TopicCreate):
         # Add the topic to the database
         db_topic = add_topic(topic.user_id, topic.title)
         
+        # Schedule background task to generate and save explanation
+        background_tasks.add_task(
+            generate_and_save_explanation,
+            topic_id=db_topic.id,
+            topic_title=topic.title
+        )
+        
         # Convert to response model
         return TopicResponse(
             id=db_topic.id,
             user_id=db_topic.user_id,
             title=db_topic.title,
+            explanation=None,  # Explanation will be added later
             created_at=db_topic.created_at.isoformat() if db_topic.created_at else None
         )
     except Exception as e:
@@ -183,8 +217,92 @@ async def get_topics(user_id: int):
         logger.error(f"Error listing topics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list topics")
 
+@app.post("/bot/random_topic", response_model=Optional[TopicResponse])
+async def bot_get_random_topic(request: Request):
+    """
+    Get a random topic for a user, explain it, and delete it.
+    
+    Args:
+        request: The request containing the user ID
+        
+    Returns:
+        The topic data with explanation, or None if no topics found
+    """
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        
+        # Validate required fields
+        if 'user_id' not in data:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        user_id = data['user_id']
+        
+        # Get a random topic for the user
+        topic = get_random_topic_for_user(user_id)
+        
+        if not topic:
+            return None
+        
+        # Generate explanation if not already present
+        if not topic.explanation:
+            try:
+                logger.info(f"Generating explanation for topic: {topic.title}")
+                explanation = generate_explanation(topic.title)
+                topic = update_topic_explanation(topic.id, explanation)
+            except Exception as e:
+                logger.error(f"Error generating explanation: {e}")
+                # Continue even if explanation generation fails
+        
+        # Prepare response
+        response = TopicResponse(
+            id=topic.id,
+            user_id=topic.user_id,
+            title=topic.title,
+            explanation=topic.explanation,
+            created_at=topic.created_at.isoformat() if topic.created_at else None
+        )
+        
+        # Delete the topic
+        delete_topic(topic.id)
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error getting random topic: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get random topic")
+
+@app.get("/bot/topic/{topic_id}", response_model=TopicResponse)
+async def bot_get_topic(topic_id: int):
+    """
+    Get a specific topic by ID.
+    
+    Args:
+        topic_id: The ID of the topic to retrieve
+        
+    Returns:
+        The topic data
+    """
+    try:
+        # Get the topic from the database
+        topic = get_topic(topic_id)
+        
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        
+        # Return the topic data
+        return TopicResponse(
+            id=topic.id,
+            user_id=topic.user_id,
+            title=topic.title,
+            explanation=topic.explanation,
+            created_at=topic.created_at.isoformat() if topic.created_at else None
+        )
+    except Exception as e:
+        logger.error(f"Error getting topic: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get topic")
+
 @app.post("/bot/add_topic", response_model=TopicResponse)
-async def bot_add_topic(request: Request):
+async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
     """
     Endpoint for the Telegram bot to add a topic.
     
@@ -212,14 +330,22 @@ async def bot_add_topic(request: Request):
             # No topic provided
             raise HTTPException(status_code=400, detail="topic_title cannot be empty")
         
-        # Add the topic to the database
+        # Add the topic to the database (without explanation initially)
         db_topic = add_topic(user_id, topic_title)
+        
+        # Schedule background task to generate and save explanation
+        background_tasks.add_task(
+            generate_and_save_explanation,
+            topic_id=db_topic.id,
+            topic_title=topic_title
+        )
         
         # Return the topic data
         return TopicResponse(
             id=db_topic.id,
             user_id=db_topic.user_id,
             title=db_topic.title,
+            explanation=None,  # Explanation will be added later
             created_at=db_topic.created_at.isoformat() if db_topic.created_at else None
         )
     

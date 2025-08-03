@@ -40,5 +40,7 @@ var/
 .vscode/
 *.swp
 *.swo
+
 # Configuration files with sensitive data
 .env
+trash

@@ -1,8 +1,8 @@
 import logging
 import httpx
 import json
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from config import TOKEN, API_HOST, API_PORT
 
 # Enable logging
@@ -170,21 +170,33 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 if explanation:
                     # Prepare the message
                     message = f"📚 Тема: {title}\n\n{explanation}\n\n"
-                    
-                    # Add related topics if available
-                    related_topics = topic_data.get('related_topics', [])
-                    if related_topics:
-                        message += "Смежные темы:\n"
-                        for i, related_topic in enumerate(related_topics, 1):
-                            message += f"{i}. {related_topic}\n"
-                        message += "\nСохранить тему можно командой /add <тема>\n\n"
-                    
                     message += f"Эта тема удалена из вашего списка."
                     
-                    # Send the message
-                    await update.message.reply_text(message)
+                    # Get related topics if available
+                    related_topics = topic_data.get('related_topics', [])
+                    
+                    if related_topics:
+                        # Create keyboard with buttons for each related topic
+                        keyboard = []
+                        for related_topic in related_topics:
+                            # Create a callback data with the topic
+                            callback_data = f"add_{related_topic}"
+                            keyboard.append([InlineKeyboardButton(related_topic, callback_data=callback_data)])
+                        
+                        # Add a message about the buttons
+                        message += "\n\nВыберите смежную тему для добавления:"
+                        
+                        # Create the reply markup
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
+                        # Send the message with buttons
+                        await update.message.reply_text(message, reply_markup=reply_markup)
+                    else:
+                        # Send the message without buttons
+                        await update.message.reply_text(message)
                 else:
                     # No explanation available
+                    # No related topics for topics without explanations
                     await update.message.reply_text(
                         f"📚 Тема: {title}\n\n"
                         f"К сожалению, не удалось сгенерировать объяснение для этой темы.\n\n"
@@ -198,6 +210,32 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         logger.error(f"Failed to send random topic request to server: {e}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
+# Define a function to handle button clicks
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle button clicks for adding related topics."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Get the callback data
+    callback_data = query.data
+    
+    # Check if it's an add topic callback
+    if callback_data.startswith("add_"):
+        # Extract the topic
+        topic = callback_data[4:]
+        
+        # Create a fake message object with the /add command
+        fake_message = update.effective_message.copy()
+        fake_message.text = f"/add {topic}"
+        
+        # Create a fake update object
+        fake_update = Update(update.update_id, message=fake_message)
+        
+        # Call the add_topic_command function
+        await add_topic_command(fake_update, context)
+    else:
+        logger.warning(f"Unknown callback data: {callback_data}")
+
 # Main function to run the bot
 def main() -> None:
     """Start the bot."""
@@ -209,6 +247,7 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_topic_command))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot until the user presses Ctrl-C

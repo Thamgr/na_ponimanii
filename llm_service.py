@@ -4,6 +4,7 @@ LLM Service Module
 This module provides functions to interact with an external LLM service
 for generating explanations of topics.
 """
+import re
 
 import logging
 import os
@@ -89,6 +90,10 @@ def generate_explanation(topic: str) -> str:
         # Extract and return the content
         if isinstance(response, AIMessage):
             explanation = response.content
+            
+            # Clean the explanation from HTML tags
+            explanation = clean_html_tags(explanation)
+            
             logger.info(f"Received explanation for topic: {topic}")
             return explanation
         else:
@@ -111,6 +116,24 @@ def generate_explanation(topic: str) -> str:
     except Exception as e:
         logger.error(f"Error generating explanation for topic '{topic}': {e}")
         raise LLMServiceException(f"Произошла ошибка при генерации объяснения: {str(e)}")
+
+def clean_html_tags(text: str) -> str:
+    """
+    Clean HTML tags from text to avoid parsing issues.
+    
+    Args:
+        text (str): The text to clean
+        
+    Returns:
+        str: The cleaned text
+    """
+    # Replace <think> tags
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    
+    # Replace other potentially problematic tags
+    # text = re.sub(r'<(?!b>|/b>|i>|/i>|code>|/code>|pre>|/pre>)[^>]*>', '', text)
+    
+    return text
 
 if __name__ == "__main__":
     # Simple test if run directly

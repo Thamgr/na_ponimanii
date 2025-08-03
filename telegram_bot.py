@@ -170,14 +170,14 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 if explanation:
                     # Send the topic title and explanation
                     await update.message.reply_text(
-                        f"📚 <b>Тема: {title}</b>\n\n{explanation}\n\n"
+                        f"📚 Тема: {title}\n\n{explanation}\n\n"
                         f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
                         parse_mode='HTML'
                     )
                 else:
                     # No explanation available
                     await update.message.reply_text(
-                        f"📚 <b>Тема: {title}</b>\n\n"
+                        f"📚 Тема: {title}\n\n"
                         f"К сожалению, не удалось сгенерировать объяснение для этой темы.\n\n"
                         f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
                         parse_mode='HTML'

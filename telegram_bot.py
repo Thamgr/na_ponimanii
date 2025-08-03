@@ -42,24 +42,24 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error(f"Failed to send update to server: {e}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
-# Define a function to handle the /add command
-async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle the /add command to add a new topic."""
-    # Get the user ID
-    user_id = update.effective_user.id
+# Helper function to add a topic
+async def add_topic(user_id: int, topic_title: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """
+    Add a topic to the database.
     
-    # Get the command text
-    message_text = update.message.text
-    
-    # Extract the topic title (everything after /add)
-    topic_title = ""
-    if len(message_text.split()) > 1:
-        topic_title = message_text.split(' ', 1)[1].strip()
-    
+    Args:
+        user_id: The ID of the user
+        topic_title: The title of the topic
+        chat_id: The ID of the chat to send messages to
+        context: The context object
+        
+    Returns:
+        bool: True if the topic was added successfully, False otherwise
+    """
     # Check if topic title is empty
     if not topic_title:
-        await update.message.reply_text('Нужно указать тему после /add')
-        return
+        await context.bot.send_message(chat_id=chat_id, text='Нужно указать тему')
+        return False
     
     # Prepare the data to send to the FastAPI server
     data = {
@@ -79,17 +79,45 @@ async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 
                 # Format and send message to the user
                 topic_id = response_data['id']
-                await update.message.reply_text(
-                    f"Тема сохранена: {response_data['title']}\n\n"
-                    f"Я подготовлю объяснение этой темы. Скоро вы сможете его увидеть, используя команду /topic {topic_id}"
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"Тема сохранена: {response_data['title']}\n\n"
+                         f"Я подготовлю объяснение этой темы. Скоро вы сможете его увидеть, используя команду /topic"
                 )
+                return True
             else:
                 error_text = response.text
                 logger.error(f"Error from server: {error_text}")
-                await update.message.reply_text('Произошла ошибка при добавлении темы.')
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text='Произошла ошибка при добавлении темы.'
+                )
+                return False
     except Exception as e:
         logger.error(f"Failed to send add topic request to server: {e}")
-        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text='Не удалось связаться с сервером. Попробуйте позже.'
+        )
+        return False
+
+# Define a function to handle the /add command
+async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /add command to add a new topic."""
+    # Get the user ID and chat ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    # Get the command text
+    message_text = update.message.text
+    
+    # Extract the topic title (everything after /add)
+    topic_title = ""
+    if len(message_text.split()) > 1:
+        topic_title = message_text.split(' ', 1)[1].strip()
+    
+    # Add the topic
+    await add_topic(user_id, topic_title, chat_id, context)
 
 # Define a function to handle the /list command
 async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -179,10 +207,11 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         # Create keyboard with buttons for each related topic
                         keyboard = []
                         for related_topic in related_topics:
-                            # Create a button that will insert the command in the chat input
+                            # Create a callback data with the topic
+                            callback_data = f"add_{related_topic}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
-                                switch_inline_query_current_chat=f"/add {related_topic}"
+                                callback_data=callback_data
                             )])
                         
                         # Add a message about the buttons
@@ -210,6 +239,39 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await update.message.reply_text('Произошла ошибка при получении темы.')
     except Exception as e:
         logger.error(f"Failed to send random topic request to server: {e}")
+# Define a function to handle button clicks
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle button clicks for adding related topics."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Get the callback data
+    callback_data = query.data
+    
+    # Check if it's an add topic callback
+    if callback_data.startswith("add_"):
+        # Extract the topic
+        topic = callback_data[4:]
+        
+        # Get the user ID and chat ID
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        
+        # Add the topic
+        success = await add_topic(user_id, topic, chat_id, context)
+        
+        # If successful, update the message to indicate the topic was added
+        if success:
+            try:
+                # Try to edit the message to indicate the topic was added
+                current_text = query.message.text
+                await query.edit_message_text(
+                    text=f"{current_text}\n\n✅ Тема '{topic}' добавлена в ваш список."
+                )
+            except Exception as e:
+                logger.error(f"Error updating message: {e}")
+    else:
+        logger.warning(f"Unknown callback data: {callback_data}")
         await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
 
 
@@ -224,6 +286,7 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_topic_command))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot until the user presses Ctrl-C

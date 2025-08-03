@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from config import API_HOST, API_PORT, TOKEN
 from database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
-from llm_service import generate_explanation, LLMServiceException
+from llm_service import generate_explanation, generate_related_topics, LLMServiceException
 
 # Enable logging
 logging.basicConfig(
@@ -35,13 +35,14 @@ class TopicCreate(BaseModel):
     """Request model for creating a topic."""
     user_id: int
     title: str
-
 class TopicResponse(BaseModel):
     """Response model for a topic."""
     id: int
     user_id: int
     title: str
     explanation: Optional[str] = None
+    created_at: Optional[str] = None
+    related_topics: Optional[List[str]] = None
     created_at: Optional[str] = None
 
 class TopicListResponse(BaseModel):
@@ -254,13 +255,23 @@ async def bot_get_random_topic(request: Request):
                 logger.error(f"Error generating explanation: {e}")
                 # Continue even if explanation generation fails
         
+        # Generate related topics
+        related_topics = []
+        try:
+            logger.info(f"Generating related topics for: {topic.title}")
+            related_topics = generate_related_topics(topic.title)
+        except Exception as e:
+            logger.error(f"Error generating related topics: {e}")
+            # Continue even if related topics generation fails
+        
         # Prepare response
         response = TopicResponse(
             id=topic.id,
             user_id=topic.user_id,
             title=topic.title,
             explanation=topic.explanation,
-            created_at=topic.created_at.isoformat() if topic.created_at else None
+            created_at=topic.created_at.isoformat() if topic.created_at else None,
+            related_topics=related_topics
         )
         
         # Delete the topic

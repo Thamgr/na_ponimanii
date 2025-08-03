@@ -168,19 +168,27 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 explanation = topic_data.get('explanation')
                 
                 if explanation:
-                    # Send the topic title and explanation
-                    await update.message.reply_text(
-                        f"📚 Тема: {title}\n\n{explanation}\n\n"
-                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
-                        parse_mode='HTML'
-                    )
+                    # Prepare the message
+                    message = f"📚 Тема: {title}\n\n{explanation}\n\n"
+                    
+                    # Add related topics if available
+                    related_topics = topic_data.get('related_topics', [])
+                    if related_topics:
+                        message += "Смежные темы:\n"
+                        for i, related_topic in enumerate(related_topics, 1):
+                            message += f"{i}. {related_topic}\n"
+                        message += "\nСохранить тему можно командой /add <тема>\n\n"
+                    
+                    message += f"Эта тема удалена из вашего списка."
+                    
+                    # Send the message
+                    await update.message.reply_text(message)
                 else:
                     # No explanation available
                     await update.message.reply_text(
                         f"📚 Тема: {title}\n\n"
                         f"К сожалению, не удалось сгенерировать объяснение для этой темы.\n\n"
-                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы.",
-                        parse_mode='HTML'
+                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы."
                     )
             else:
                 error_text = response.text

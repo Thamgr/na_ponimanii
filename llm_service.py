@@ -8,7 +8,7 @@ import re
 
 import logging
 import os
-from typing import Optional
+from typing import Optional, List
 
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
@@ -23,6 +23,8 @@ from config import (
     LLM_MAX_TOKENS,
     EXPLANATION_SYSTEM_PROMPT,
     EXPLANATION_USER_PROMPT_TEMPLATE,
+    RELATED_TOPICS_SYSTEM_PROMPT,
+    RELATED_TOPICS_USER_PROMPT_TEMPLATE,
 )
 
 # Set up logging
@@ -116,6 +118,93 @@ def generate_explanation(topic: str) -> str:
     except Exception as e:
         logger.error(f"Error generating explanation for topic '{topic}': {e}")
         raise LLMServiceException(f"Произошла ошибка при генерации объяснения: {str(e)}")
+
+def generate_related_topics(topic: str) -> List[str]:
+    """
+    Generate a list of related topics for a given topic using an external LLM.
+    
+    Args:
+        topic (str): The topic to generate related topics for
+        
+    Returns:
+        List[str]: A list of related topics
+        
+    Raises:
+        LLMServiceException: If there's an error communicating with the LLM service
+    """
+    try:
+        # Format the user prompt with the topic
+        user_prompt = RELATED_TOPICS_USER_PROMPT_TEMPLATE.format(topic=topic)
+        
+        # Create messages for the LLM
+        messages = [
+            SystemMessage(content=RELATED_TOPICS_SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt)
+        ]
+        
+        # Get the LLM client
+        llm = get_llm_client()
+        
+        # Send the request to the LLM
+        logger.info(f"Sending request to LLM for related topics to: {topic}")
+        response = llm.invoke(messages)
+        
+        # Extract and return the content
+        if isinstance(response, AIMessage):
+            content = response.content
+            
+            # Clean the content from HTML tags
+            content = clean_html_tags(content)
+            
+            # Parse the content into a list of topics
+            topics = parse_topics_from_text(content)
+            
+            logger.info(f"Received {len(topics)} related topics for: {topic}")
+            return topics
+        else:
+            logger.error(f"Unexpected response type: {type(response)}")
+            return []
+            
+    except httpx.TimeoutException:
+        logger.error(f"Timeout while requesting related topics for: {topic}")
+        return []
+    
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code
+        logger.error(f"HTTP error {status_code} while requesting related topics for: {topic}")
+        return []
+    
+    except Exception as e:
+        logger.error(f"Error generating related topics for '{topic}': {e}")
+        return []
+
+def parse_topics_from_text(text: str) -> List[str]:
+    """
+    Parse a list of topics from text.
+    
+    Args:
+        text (str): The text to parse
+        
+    Returns:
+        List[str]: A list of topics
+    """
+    # Split the text by newlines
+    lines = text.strip().split('\n')
+    
+    # Clean up each line
+    topics = []
+    for line in lines:
+        # Remove any leading numbers, bullets, or other markers
+        line = re.sub(r'^[\d\-\*\•\.\s]+', '', line.strip())
+        
+        # Remove any trailing punctuation
+        line = re.sub(r'[,\.;:]$', '', line)
+        
+        # Skip empty lines
+        if line:
+            topics.append(line)
+    
+    return topics
 
 def clean_html_tags(text: str) -> str:
     """

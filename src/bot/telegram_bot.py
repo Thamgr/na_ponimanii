@@ -511,7 +511,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         keyboard = []
                         for related_topic in related_topics:
                             # Create a callback data with the topic
-                            callback_data = f"add_{related_topic} ({title})"
+                            callback_data = f"add_{related_topic}_p4rent_{title}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data
@@ -599,7 +599,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Check if it's an add topic callback
     if callback_data.startswith("add_"):
         # Extract the topic
-        topic = callback_data[4:]
+        base_topic = callback_data[4:]
+        parent_topic = f"{callback_data}_p4rent_".split('_p4rent_')[1]
+        topic += f"{base_topic} ({parent_topic})"
         
         # Add the topic
         success = await add_topic(user_id, topic, chat_id, context)

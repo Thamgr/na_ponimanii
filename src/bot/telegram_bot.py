@@ -17,7 +17,7 @@ from env.config import (
     TOKEN, API_HOST, API_PORT,
     BOT_WELCOME_MESSAGE, BOT_EMPTY_TOPIC_ERROR, BOT_TOPIC_ADDED_SUCCESS,
     BOT_TOPIC_ADDED_ERROR, BOT_CONNECTION_ERROR, BOT_TOPIC_PROMPT,
-    BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
+    BOT_TOPIC_PROMPT_AGAIN, BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
     BOT_TOPICS_LIST_ERROR, BOT_NO_TOPICS_FOR_EXPLANATION, BOT_TOPIC_EXPLANATION,
     BOT_RELATED_TOPICS_PROMPT, BOT_NO_EXPLANATION, BOT_TOPIC_ERROR,
     BOT_TOPIC_ADDED_FROM_CALLBACK, BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR,
@@ -228,6 +228,48 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             BOT_KEYBOARD_WHAT_NEXT,
             reply_markup=reply_markup
         )
+    
+    # End the conversation
+    return ConversationHandler.END
+
+# Define a function to handle the case when a user presses the add topic button while in the waiting for topic state
+async def handle_add_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the case when a user presses the add topic button while in the waiting for topic state."""
+    # Get the user ID and chat ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    logger.info(format_log_message(
+        "Received add topic button press while in waiting for topic state",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username
+    ))
+    
+    # Prompt the user for a topic again
+    await update.message.reply_text(BOT_TOPIC_PROMPT_AGAIN)
+    
+    # Stay in the conversation
+    return WAITING_FOR_TOPIC
+
+# Define a function to handle the case when a user presses the study topic button while in the waiting for topic state
+async def handle_study_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the case when a user presses the study topic button while in the waiting for topic state."""
+    # Get the user ID and chat ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    logger.info(format_log_message(
+        "Received study topic button press while in waiting for topic state",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username
+    ))
+    
+    # End the conversation
+    await get_topic_command(update, context)
     
     # End the conversation
     return ConversationHandler.END
@@ -571,13 +613,21 @@ def main() -> None:
             MessageHandler(filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"), add_topic_command)
         ],
         states={
-            WAITING_FOR_TOPIC: [MessageHandler(
-                filters.TEXT &
-                ~filters.COMMAND &  # Exclude all commands
-                ~filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$") &
-                ~filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
-                receive_topic
-            )]
+            WAITING_FOR_TOPIC: [
+                MessageHandler(
+                    filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"),
+                    handle_add_topic_in_waiting_state
+                ),
+                MessageHandler(
+                    filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
+                    handle_study_topic_in_waiting_state
+                ),
+                MessageHandler(
+                    filters.TEXT &
+                    ~filters.COMMAND,  # Exclude all commands
+                    receive_topic
+                )
+            ]
         },
         fallbacks=[MessageHandler(filters.COMMAND, lambda update, context: ConversationHandler.END)]
     )

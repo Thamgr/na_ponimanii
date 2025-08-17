@@ -65,6 +65,7 @@ BOT_CONNECTION_ERROR = 'Не удалось связаться с серверо
 
 # Add topic command
 BOT_TOPIC_PROMPT = 'Пожалуйста, отправьте тему, которую вы хотите добавить:'
+BOT_TOPIC_PROMPT_AGAIN = 'Пожалуйста, введите тему для добавления.'
 
 # List topics command
 BOT_NO_TOPICS = 'У вас пока нет сохраненных тем. Используйте /add чтобы добавить тему.'

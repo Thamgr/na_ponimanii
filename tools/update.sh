@@ -90,37 +90,112 @@ if [ ! -f "$PROJECT_DIR/env/.env" ]; then
     fi
 fi
 
-# Update dependencies in virtual environment
-if [ -d "$VENV_DIR" ]; then
-    log "${YELLOW}Updating dependencies...${NC}"
-    $VENV_DIR/bin/pip install --upgrade pip
-    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
-    
-    # Install specific packages explicitly
-    log "${YELLOW}Installing required packages explicitly...${NC}"
-    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy langchain langchain-core langchain-openai
-else
-    log "${YELLOW}Creating virtual environment...${NC}"
-    python3 -m venv $VENV_DIR
-    $VENV_DIR/bin/pip install --upgrade pip
-    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
-    
-    # Install specific packages explicitly
-    log "${YELLOW}Installing required packages explicitly...${NC}"
-    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy langchain langchain-core langchain-openai
+# Check if Python 3 is installed
+if ! command -v python3 &> /dev/null; then
+    log "${RED}Python 3 is not installed. Please install Python 3 and try again.${NC}"
+    exit 1
 fi
 
-# Verify packages are installed and show versions
-log "${YELLOW}Checking installed packages...${NC}"
-$VENV_DIR/bin/pip list | grep httpx || echo "httpx not found!"
-$VENV_DIR/bin/pip list | grep telegram || echo "python-telegram-bot not found!"
-$VENV_DIR/bin/pip list | grep fastapi || echo "fastapi not found!"
+# Check Python version
+PYTHON_VERSION=$(python3 --version | awk '{print $2}')
+log "${YELLOW}Using Python version: $PYTHON_VERSION${NC}"
 
-# Test imports
+# Check if pip is installed
+if ! command -v pip3 &> /dev/null; then
+    log "${RED}pip3 is not installed. Please install pip3 and try again.${NC}"
+    exit 1
+fi
+
+# Update dependencies in virtual environment
+if [ -d "$VENV_DIR" ]; then
+    log "${YELLOW}Updating dependencies in existing virtual environment...${NC}"
+    
+    # Check if virtual environment is valid
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        log "${RED}Virtual environment appears to be corrupted. Recreating...${NC}"
+        rm -rf $VENV_DIR
+        
+        # Check if venv module is available
+        if ! python3 -c "import venv" &> /dev/null; then
+            log "${RED}Python venv module is not available. Installing python3-venv...${NC}"
+            apt-get update && apt-get install -y python3-venv
+        fi
+        
+        # Create virtual environment
+        python3 -m venv $VENV_DIR
+        
+        # Check if virtual environment was created successfully
+        if [ ! -f "$VENV_DIR/bin/python" ]; then
+            log "${RED}Failed to create virtual environment. Please check your Python installation.${NC}"
+            exit 1
+        fi
+    fi
+    
+    # Update dependencies
+    $VENV_DIR/bin/pip install --upgrade pip
+    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    
+    # Install specific packages explicitly
+    log "${YELLOW}Installing required packages explicitly...${NC}"
+    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
+else
+    log "${YELLOW}Creating virtual environment...${NC}"
+    
+    # Check if venv module is available
+    if ! python3 -c "import venv" &> /dev/null; then
+        log "${RED}Python venv module is not available. Installing python3-venv...${NC}"
+        apt-get update && apt-get install -y python3-venv
+    fi
+    
+    # Create virtual environment
+    python3 -m venv $VENV_DIR
+    
+    # Check if virtual environment was created successfully
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        log "${RED}Failed to create virtual environment. Please check your Python installation.${NC}"
+        exit 1
+    fi
+    
+    # Install dependencies
+    $VENV_DIR/bin/pip install --upgrade pip
+    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    
+    # Install specific packages explicitly
+    log "${YELLOW}Installing required packages explicitly...${NC}"
+    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
+fi
+
+log "${GREEN}Dependencies updated successfully.${NC}"
+
+# Check if Python modules can be imported
 log "${YELLOW}Testing Python imports...${NC}"
-$VENV_DIR/bin/python -c "import httpx; print('httpx version:', httpx.__version__)" || log "${RED}Failed to import httpx${NC}"
-$VENV_DIR/bin/python -c "import fastapi; print('fastapi version:', fastapi.__version__)" || log "${RED}Failed to import fastapi${NC}"
-$VENV_DIR/bin/python -c "import telegram; print('telegram version:', telegram.__version__)" || log "${RED}Failed to import telegram${NC}"
+
+# Test httpx import
+if $VENV_DIR/bin/python -c "import httpx" 2>/dev/null; then
+    HTTPX_VERSION=$($VENV_DIR/bin/python -c "import httpx; print(httpx.__version__)" 2>/dev/null)
+    log "${GREEN}httpx is installed (version: $HTTPX_VERSION)${NC}"
+else
+    log "${RED}Failed to import httpx. Installing...${NC}"
+    $VENV_DIR/bin/pip install httpx
+fi
+
+# Test fastapi import
+if $VENV_DIR/bin/python -c "import fastapi" 2>/dev/null; then
+    FASTAPI_VERSION=$($VENV_DIR/bin/python -c "import fastapi; print(fastapi.__version__)" 2>/dev/null)
+    log "${GREEN}fastapi is installed (version: $FASTAPI_VERSION)${NC}"
+else
+    log "${RED}Failed to import fastapi. Installing...${NC}"
+    $VENV_DIR/bin/pip install fastapi
+fi
+
+# Test telegram import
+if $VENV_DIR/bin/python -c "import telegram" 2>/dev/null; then
+    TELEGRAM_VERSION=$($VENV_DIR/bin/python -c "import telegram; print(telegram.__version__)" 2>/dev/null)
+    log "${GREEN}telegram is installed (version: $TELEGRAM_VERSION)${NC}"
+else
+    log "${RED}Failed to import telegram. Installing...${NC}"
+    $VENV_DIR/bin/pip install python-telegram-bot
+fi
 
 log "${GREEN}Dependencies updated successfully.${NC}"
 

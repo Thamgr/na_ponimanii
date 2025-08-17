@@ -54,6 +54,7 @@ class TopicResponse(BaseModel):
     explanation: Optional[str] = None
     created_at: Optional[str] = None
     related_topics: Optional[List[str]] = None
+    parent_topic_id: Optional[int] = None
     created_at: Optional[str] = None
 
 class TopicListResponse(BaseModel):
@@ -75,29 +76,51 @@ async def root():
     """Root endpoint for health check."""
     return {"status": "running"}
 
-async def generate_and_save_explanation(topic_id: int, topic_title: str):
+async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_topic_id: Optional[int] = None):
     """
     Background task to generate an explanation and related topics for a topic and save them to the database.
     
     Args:
         topic_id: The ID of the topic
         topic_title: The title of the topic
+        parent_topic_id: The ID of the parent topic, if available
     """
     logger.info(format_log_message(
         "Starting background task to generate explanation and related topics",
         topic_id=topic_id,
-        topic_title=topic_title
+        topic_title=topic_title,
+        parent_topic_id=parent_topic_id
     ))
     
     try:
+        # Get parent topic title if parent_topic_id is provided
+        parent_topic_title = None
+        if parent_topic_id:
+            parent_topic = get_topic(parent_topic_id)
+            if parent_topic:
+                parent_topic_title = parent_topic.title
+                logger.info(format_log_message(
+                    "Retrieved parent topic",
+                    topic_id=topic_id,
+                    parent_topic_id=parent_topic_id,
+                    parent_topic_title=parent_topic_title
+                ))
+            else:
+                logger.warning(format_log_message(
+                    "Parent topic not found",
+                    topic_id=topic_id,
+                    parent_topic_id=parent_topic_id
+                ))
+        
         # Generate explanation
         logger.info(format_log_message(
             "Requesting explanation from LLM service",
             topic_id=topic_id,
-            topic_title=topic_title
+            topic_title=topic_title,
+            parent_topic_title=parent_topic_title
         ))
         
-        explanation = generate_explanation(topic_title)
+        explanation = generate_explanation(topic_title, parent_topic_title)
 
         logger.info(format_log_message(
             "Requesting related topics from LLM service with explanation context",
@@ -251,7 +274,8 @@ async def bot_get_random_topic(request: Request):
             title=topic.title,
             explanation=topic.explanation,
             created_at=topic.created_at.isoformat() if topic.created_at else None,
-            related_topics=related_topics
+            related_topics=related_topics,
+            parent_topic_id=topic.parent_topic_id
         )
         
         # Delete the topic
@@ -321,11 +345,13 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         
         user_id = data['user_id']
         topic_title = data['topic_title']
+        parent_topic_id = data.get('parent_topic_id')  # Optional parent topic ID
         
         logger.info(format_log_message(
             "Processing add_topic request",
             user_id=user_id,
-            topic_title=topic_title
+            topic_title=topic_title,
+            parent_topic_id=parent_topic_id
         ))
         
         # Check if topic title is empty
@@ -344,7 +370,7 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
             topic_title=topic_title
         ))
         
-        db_topic = add_topic(user_id, topic_title)
+        db_topic = add_topic(user_id, topic_title, parent_topic_id=parent_topic_id)
         
         logger.info(format_log_message(
             "Topic added to database",
@@ -363,7 +389,8 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(
             generate_and_save_explanation,
             topic_id=db_topic.id,
-            topic_title=topic_title
+            topic_title=topic_title,
+            parent_topic_id=parent_topic_id
         )
         
         # Return the topic data
@@ -372,6 +399,7 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
             user_id=db_topic.user_id,
             title=db_topic.title,
             explanation=None,  # Explanation will be added later
+            parent_topic_id=db_topic.parent_topic_id,
             created_at=db_topic.created_at.isoformat() if db_topic.created_at else None
         )
         

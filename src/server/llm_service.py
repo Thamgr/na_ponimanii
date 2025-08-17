@@ -66,12 +66,13 @@ def get_llm_client() -> ChatOpenAI:
         ))
         raise LLMServiceException(f"Failed to initialize LLM client: {str(e)}")
 
-def generate_explanation(topic: str) -> str:
+def generate_explanation(topic: str, parent_topic: Optional[str] = None) -> str:
     """
     Generate an explanation for a given topic using an external LLM.
     
     Args:
         topic (str): The topic to explain
+        parent_topic (Optional[str]): The parent topic to provide context
         
     Returns:
         str: The generated explanation
@@ -80,8 +81,11 @@ def generate_explanation(topic: str) -> str:
         LLMServiceException: If there's an error communicating with the LLM service
     """
     try:
-        # Format the user prompt with the topic (now just the topic itself)
-        user_prompt = EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)
+        # Format the user prompt with the topic and parent topic if available
+        if parent_topic:
+            user_prompt = f"{EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)}\n\nЭта является продолжением темы: {parent_topic}"
+        else:
+            user_prompt = EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)
         
         # Create messages for the LLM (system prompt contains all format instructions)
         messages = [
@@ -96,6 +100,7 @@ def generate_explanation(topic: str) -> str:
         logger.info(format_log_message(
             "Sending request to LLM for explanation",
             topic=topic,
+            parent_topic=parent_topic,
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS

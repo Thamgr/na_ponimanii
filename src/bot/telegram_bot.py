@@ -510,8 +510,8 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         # Create keyboard with buttons for each related topic
                         keyboard = []
                         for related_topic in related_topics:
-                            # Create a callback data with the topic
-                            callback_data = f"add_{related_topic}"
+                            # Create a callback data with the topic and parent topic ID
+                            callback_data = f"add_{related_topic}|{topic_data['id']}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data
@@ -596,19 +596,72 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         callback_data=callback_data
     ))
     
-    # Check if it's an add topic callback
-    if callback_data.startswith("add_"):
-        # Extract the topic
-        topic = callback_data[4:]
-        
-        # Add the topic
-        success = await add_topic(user_id, topic, chat_id, context)
+    try:
+        # Check if it's an add topic callback
+        if callback_data.startswith("add_"):
+            # Extract the topic and parent topic ID
+            parts = callback_data[4:].split('|')
+            topic = parts[0]
+            parent_topic_id = int(parts[1]) if len(parts) > 1 else None
+            
+            logger.info(format_log_message(
+                "Parsed callback data",
+                topic=topic,
+                parent_topic_id=parent_topic_id
+            ))
+            
+            # Prepare the data to send to the FastAPI server
+            data = {
+                "user_id": user_id,
+                "topic_title": topic,
+                "parent_topic_id": parent_topic_id
+            }
+            
+            # Send the request to the FastAPI server
+            add_topic_url = f"http://{API_HOST}:{API_PORT}/bot/add_topic"
+            
+            logger.info(format_log_message(
+                "Sending add_topic request to server with parent_topic_id",
+                url=add_topic_url,
+                method="POST",
+                payload=data
+            ))
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(add_topic_url, json=data)
+                
+                if response.status_code == 200:
+                    logger.info(format_log_message(
+                        "Topic added successfully with parent_topic_id",
+                        user_id=user_id,
+                        topic=topic,
+                        parent_topic_id=parent_topic_id
+                    ))
+                    success = True
+                else:
+                    logger.error(format_log_message(
+                        "Error response from server when adding topic with parent_topic_id",
+                        status_code=response.status_code,
+                        error=response.text,
+                        user_id=user_id,
+                        topic=topic,
+                        parent_topic_id=parent_topic_id
+                    ))
+                    success = False
         
         # Just answer the callback query with a notification
         if success:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
         else:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing callback query",
+            error=str(e),
+            error_type=type(e).__name__,
+            callback_data=callback_data
+        ))
+        await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
     else:
         await query.answer(BOT_UNKNOWN_COMMAND)
 

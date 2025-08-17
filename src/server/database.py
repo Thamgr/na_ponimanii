@@ -44,7 +44,8 @@ class Topic(Base):
     user_id = Column(Integer, index=True)
     title = Column(String, index=True)
     explanation = Column(Text, nullable=True)  # Column for storing explanations
-    related_topics = Column(Text, nullable=True)  # New column for storing related topics as JSON
+    related_topics = Column(Text, nullable=True)  # Column for storing related topics as JSON
+    parent_topic_id = Column(Integer, nullable=True)  # New column for storing parent topic ID
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -56,6 +57,7 @@ class Topic(Base):
             "title": self.title,
             "explanation": self.explanation,
             "related_topics": related_topics_list,
+            "parent_topic_id": self.parent_topic_id,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
@@ -101,7 +103,7 @@ def get_db() -> Session:
         raise
 
 
-def add_topic(user_id: int, title: str, explanation: Optional[str] = None) -> Topic:
+def add_topic(user_id: int, title: str, explanation: Optional[str] = None, parent_topic_id: Optional[int] = None) -> Topic:
     """
     Add a new topic to the database.
     
@@ -109,6 +111,7 @@ def add_topic(user_id: int, title: str, explanation: Optional[str] = None) -> To
         user_id (int): ID of the user who created the topic
         title (str): Title of the topic
         explanation (Optional[str]): Explanation of the topic, if available
+        parent_topic_id (Optional[int]): ID of the parent topic, if available
     
     Returns:
         Topic: The created topic
@@ -117,13 +120,14 @@ def add_topic(user_id: int, title: str, explanation: Optional[str] = None) -> To
         "Adding topic to database",
         user_id=user_id,
         title=title,
-        has_explanation=explanation is not None
+        has_explanation=explanation is not None,
+        parent_topic_id=parent_topic_id
     ))
     
     db = get_db()
     try:
         # Create a new Topic instance
-        topic = Topic(user_id=user_id, title=title, explanation=explanation)
+        topic = Topic(user_id=user_id, title=title, explanation=explanation, parent_topic_id=parent_topic_id)
         
         # Add to the session and commit
         db.add(topic)

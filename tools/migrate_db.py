@@ -2,31 +2,28 @@ import sys
 import os
 import sqlite3
 import json
+from datetime import datetime
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from env.config import DATABASE_URL
-from tools.logging_config import setup_logging, format_log_message
 
-# Set up component-specific logger
-logger = setup_logging("MIGRATION")
+# Simple logging function
+def log(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
 
 def migrate_database():
     """
     Migrate the database to add the related_topics column to the topics table.
     """
-    logger.info(format_log_message(
-        "Starting database migration"
-    ))
+    log("Starting database migration")
     
     # Extract the database path from the DATABASE_URL
     db_path = DATABASE_URL.replace("sqlite:///", "")
     
-    logger.info(format_log_message(
-        "Connecting to database",
-        db_path=db_path
-    ))
+    log(f"Connecting to database: {db_path}")
     
     try:
         # Connect to the database
@@ -39,33 +36,31 @@ def migrate_database():
         column_names = [column[1] for column in columns]
         
         if "related_topics" not in column_names:
-            logger.info(format_log_message(
-                "Adding related_topics column to topics table"
-            ))
+            log("Adding related_topics column to topics table")
             
             # Add the related_topics column
             cursor.execute("ALTER TABLE topics ADD COLUMN related_topics TEXT")
             
-            logger.info(format_log_message(
-                "Column added successfully"
-            ))
+            log("Column added successfully")
         else:
-            logger.info(format_log_message(
-                "related_topics column already exists"
-            ))
+            log("related_topics column already exists")
+            
+        if "parent_topic_id" not in column_names:
+            log("Adding parent_topic_id column to topics table")
+            
+            # Add the parent_topic_id column
+            cursor.execute("ALTER TABLE topics ADD COLUMN parent_topic_id INTEGER")
+            
+            log("Column added successfully")
+        else:
+            log("parent_topic_id column already exists")
         
         # Commit the changes
         conn.commit()
         
-        logger.info(format_log_message(
-            "Database migration completed successfully"
-        ))
+        log("Database migration completed successfully")
     except Exception as e:
-        logger.error(format_log_message(
-            "Error migrating database",
-            error=str(e),
-            error_type=type(e).__name__
-        ))
+        log(f"Error migrating database: {str(e)} ({type(e).__name__})")
         raise
     finally:
         # Close the connection
@@ -73,14 +68,10 @@ def migrate_database():
             conn.close()
 
 if __name__ == "__main__":
-    logger.info(format_log_message(
-        "Running database migration script"
-    ))
+    log("Running database migration script")
     
     migrate_database()
     
-    logger.info(format_log_message(
-        "Database migration script completed"
-    ))
+    log("Database migration script completed")
     
     print("Database migration completed successfully")

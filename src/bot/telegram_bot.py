@@ -33,6 +33,10 @@ logger = setup_logging("BOT")
 # Define conversation states
 WAITING_FOR_TOPIC = 1
 
+# Global map to store parent topic data
+# Key: related_topic, Value: parent_topic_title
+parent_topic_map = {}
+
 
 # Decorator for handlers to show and remove "Thinking..." message
 def thinking_decorator(handler_func):
@@ -538,12 +542,21 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         # Create keyboard with buttons for each related topic
                         keyboard = []
                         for related_topic in related_topics:
-                            # Create a callback data with the topic and parent topic title
-                            callback_data = f"add_{related_topic}|{title}"
+                            # Store the parent topic in the global map
+                            parent_topic_map[related_topic] = title
+                            
+                            # Create a simple callback data with just the topic
+                            callback_data = f"add_{related_topic}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data
                             )])
+                            
+                            logger.info(format_log_message(
+                                "Stored parent topic in map",
+                                related_topic=related_topic,
+                                parent_topic=title
+                            ))
                         
                         # Add a message about the buttons
                         message += BOT_RELATED_TOPICS_PROMPT
@@ -631,13 +644,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Check if it's an add topic callback
     if callback_data.startswith("add_"):
         try:
-            # Extract the topic and parent topic title
-            parts = callback_data[4:].split('|')
-            topic = parts[0]
-            parent_topic_title = parts[1] if len(parts) > 1 else None
+            # Extract the topic
+            topic = callback_data[4:]
+            
+            # Get the parent topic from the global map
+            parent_topic_title = parent_topic_map.get(topic)
             
             logger.info(format_log_message(
-                "Parsed callback data",
+                "Retrieved parent topic from map",
                 topic=topic,
                 parent_topic_title=parent_topic_title
             ))
@@ -655,6 +669,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
         # Answer the callback query with a notification
         if success and topic:
+            # Clean up the global map
+            if topic in parent_topic_map:
+                logger.info(format_log_message(
+                    "Removing topic from parent map",
+                    topic=topic
+                ))
+                del parent_topic_map[topic]
+            
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
         else:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
@@ -694,6 +716,23 @@ async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_
             button=message_text
         ))
 
+
+# Function to clean up the parent topic map
+async def cleanup_parent_topic_map(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Periodically clean up the parent topic map to avoid memory leaks."""
+    global parent_topic_map
+    
+    logger.info(format_log_message(
+        "Cleaning up parent topic map",
+        map_size=len(parent_topic_map)
+    ))
+    
+    # Clear the map
+    parent_topic_map = {}
+    
+    logger.info(format_log_message(
+        "Parent topic map cleaned up"
+    ))
 
 # Main function to run the bot
 def main() -> None:
@@ -746,8 +785,12 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_callback))
     
     
+    # Add job to clean up parent topic map every hour
+    job_queue = application.job_queue
+    job_queue.run_repeating(cleanup_parent_topic_map, interval=3600, first=3600)
+    
     logger.info(format_log_message(
-        "Handlers registered, starting polling"
+        "Handlers registered, cleanup job scheduled, starting polling"
     ))
 
     # Run the bot until the user presses Ctrl-C

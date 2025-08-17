@@ -332,12 +332,29 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ))
         
         async with httpx.AsyncClient() as client:
-
+            # Initialize response variable
+            response = None
+            
             try:
                 response = await client.post(random_topic_url, json=data, timeout=5)
             except Exception as err:
-                logger.info(format_log_message("Retrieving random topic goes brrrr", error=str(err)))
+                logger.error(format_log_message(
+                    "Error retrieving random topic",
+                    error=str(err),
+                    user_id=user_id
+                ))
+                await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+                return
             
+            # Check if response is valid
+            if response is None:
+                logger.error(format_log_message(
+                    "No response received from server",
+                    user_id=user_id
+                ))
+                await update.message.reply_text('Не удалось получить ответ от сервера. Попробуйте позже.')
+                return
+                
             if response.status_code == 200:
                 # Check if we got a topic
                 if not response.content or response.content == b'null':

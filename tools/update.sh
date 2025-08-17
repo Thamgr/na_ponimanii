@@ -100,7 +100,7 @@ fi
 PYTHON_VERSION=$(python3 --version | awk '{print $2}')
 log "${YELLOW}Using Python version: $PYTHON_VERSION${NC}"
 
-# Check if pip is installed
+# Check if pip3 is installed
 if ! command -v pip3 &> /dev/null; then
     log "${RED}pip3 is not installed. Please install pip3 and try again.${NC}"
     exit 1
@@ -132,12 +132,12 @@ if [ -d "$VENV_DIR" ]; then
     fi
     
     # Update dependencies
-    $VENV_DIR/bin/pip install --upgrade pip
-    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    $VENV_DIR/bin/pip3 install --upgrade pip
+    $VENV_DIR/bin/pip3 install -r $PROJECT_DIR/requirements.txt
     
     # Install specific packages explicitly
     log "${YELLOW}Installing required packages explicitly...${NC}"
-    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
+    $VENV_DIR/bin/pip3 install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
 else
     log "${YELLOW}Creating virtual environment...${NC}"
     
@@ -157,12 +157,12 @@ else
     fi
     
     # Install dependencies
-    $VENV_DIR/bin/pip install --upgrade pip
-    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    $VENV_DIR/bin/pip3 install --upgrade pip
+    $VENV_DIR/bin/pip3 install -r $PROJECT_DIR/requirements.txt
     
     # Install specific packages explicitly
     log "${YELLOW}Installing required packages explicitly...${NC}"
-    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
+    $VENV_DIR/bin/pip3 install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy
 fi
 
 log "${GREEN}Dependencies updated successfully.${NC}"
@@ -176,7 +176,7 @@ if $VENV_DIR/bin/python -c "import httpx" 2>/dev/null; then
     log "${GREEN}httpx is installed (version: $HTTPX_VERSION)${NC}"
 else
     log "${RED}Failed to import httpx. Installing...${NC}"
-    $VENV_DIR/bin/pip install httpx
+    $VENV_DIR/bin/pip3 install httpx
 fi
 
 # Test fastapi import
@@ -185,7 +185,7 @@ if $VENV_DIR/bin/python -c "import fastapi" 2>/dev/null; then
     log "${GREEN}fastapi is installed (version: $FASTAPI_VERSION)${NC}"
 else
     log "${RED}Failed to import fastapi. Installing...${NC}"
-    $VENV_DIR/bin/pip install fastapi
+    $VENV_DIR/bin/pip3 install fastapi
 fi
 
 # Test telegram import
@@ -194,7 +194,7 @@ if $VENV_DIR/bin/python -c "import telegram" 2>/dev/null; then
     log "${GREEN}telegram is installed (version: $TELEGRAM_VERSION)${NC}"
 else
     log "${RED}Failed to import telegram. Installing...${NC}"
-    $VENV_DIR/bin/pip install python-telegram-bot
+    $VENV_DIR/bin/pip3 install python-telegram-bot
 fi
 
 log "${GREEN}Dependencies updated successfully.${NC}"

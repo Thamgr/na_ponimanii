@@ -611,6 +611,7 @@ def main() -> None:
         states={
             WAITING_FOR_TOPIC: [MessageHandler(
                 filters.TEXT &
+                ~filters.COMMAND &  # Exclude all commands
                 ~filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$") &
                 ~filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
                 receive_topic
@@ -621,16 +622,16 @@ def main() -> None:
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("list", list_topics_command))
-    application.add_handler(CommandHandler("topic", get_topic_command))
-    application.add_handler(add_topic_conv_handler)
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
     # Add handler for keyboard buttons
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
         handle_keyboard_buttons
     ))
+    application.add_handler(CommandHandler("list", list_topics_command))
+    application.add_handler(CommandHandler("topic", get_topic_command))
+    application.add_handler(add_topic_conv_handler)
+    application.add_handler(CallbackQueryHandler(button_callback))
+    
     
     logger.info(format_log_message(
         "Handlers registered, starting polling"

@@ -4,6 +4,7 @@ import sys
 import os
 import time
 import asyncio
+from typing import Tuple, Dict, Optional
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -114,8 +115,80 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(BOT_WELCOME_MESSAGE, reply_markup=reply_markup)
 
 
+# Helper function to send add_topic request to the server
+async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_title: Optional[str] = None) -> Tuple[bool, Optional[Dict]]:
+    """
+    Send a request to the server to add a topic.
+    
+    Args:
+        user_id: The ID of the user
+        topic_title: The title of the topic
+        parent_topic_title: The title of the parent topic, if available
+        
+    Returns:
+        Tuple[bool, Optional[Dict]]: A tuple containing a success flag and the response data if successful
+    """
+    # Prepare the data to send to the FastAPI server
+    data = {
+        "user_id": user_id,
+        "topic_title": topic_title
+    }
+    
+    # Add parent_topic_title if provided
+    if parent_topic_title:
+        data["parent_topic_title"] = parent_topic_title
+    
+    # Send the request to the FastAPI server
+    try:
+        add_topic_url = f"http://{API_HOST}:{API_PORT}/bot/add_topic"
+        
+        logger.info(format_log_message(
+            "Sending add_topic request to server",
+            url=add_topic_url,
+            method="POST",
+            payload=data,
+            parent_topic_title=parent_topic_title
+        ))
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(add_topic_url, json=data)
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                logger.info(format_log_message(
+                    "Topic added successfully",
+                    user_id=user_id,
+                    topic_id=response_data['id'],
+                    topic_title=response_data['title'],
+                    parent_topic_title=parent_topic_title
+                ))
+                
+                return True, response_data
+            else:
+                error_text = response.text
+                logger.error(format_log_message(
+                    "Error response from server when adding topic",
+                    status_code=response.status_code,
+                    error=error_text,
+                    user_id=user_id,
+                    topic_title=topic_title,
+                    parent_topic_title=parent_topic_title
+                ))
+                
+                return False, None
+    except Exception as e:
+        logger.error(format_log_message(
+            "Failed to send add_topic request to server",
+            error=str(e),
+            user_id=user_id,
+            topic_title=topic_title,
+            parent_topic_title=parent_topic_title
+        ))
+        
+        return False, None
+
 # Helper function to add a topic
-async def add_topic(user_id: int, topic_title: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def add_topic(user_id: int, topic_title: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE, parent_topic_title: Optional[str] = None) -> bool:
     """
     Add a topic to the database.
     
@@ -124,6 +197,7 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         topic_title: The title of the topic
         chat_id: The ID of the chat to send messages to
         context: The context object
+        parent_topic_title: The title of the parent topic, if available
         
     Returns:
         bool: True if the topic was added successfully, False otherwise
@@ -132,7 +206,8 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         "Adding topic",
         user_id=user_id,
         chat_id=chat_id,
-        topic_title=topic_title
+        topic_title=topic_title,
+        parent_topic_title=parent_topic_title
     ))
     
     # Check if topic title is empty
@@ -145,71 +220,24 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         await context.bot.send_message(chat_id=chat_id, text=BOT_EMPTY_TOPIC_ERROR)
         return False
     
-    # Prepare the data to send to the FastAPI server
-    data = {
-        "user_id": user_id,
-        "topic_title": topic_title
-    }
+    # Send the request to the server
+    success, response_data = await send_add_topic_request(user_id, topic_title, parent_topic_title)
     
-    # Send the request to the FastAPI server
-    try:
-        add_topic_url = f"http://{API_HOST}:{API_PORT}/bot/add_topic"
-        
-        logger.info(format_log_message(
-            "Sending add_topic request to server",
-            url=add_topic_url,
-            method="POST",
-            payload=data
-        ))
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(add_topic_url, json=data)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                logger.info(format_log_message(
-                    "Topic added successfully",
-                    user_id=user_id,
-                    topic_id=response_data['id'],
-                    topic_title=response_data['title']
-                ))
-                
-                # Format and send message to the user
-                success_message = BOT_TOPIC_ADDED_SUCCESS.format(title=response_data['title'])
-                
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=success_message
-                )
-                
-                return True
-            else:
-                error_text = response.text
-                logger.error(format_log_message(
-                    "Error response from server when adding topic",
-                    status_code=response.status_code,
-                    error=error_text,
-                    user_id=user_id,
-                    topic_title=topic_title
-                ))
-                
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=BOT_TOPIC_ADDED_ERROR
-                )
-                
-                return False
-    except Exception as e:
-        logger.error(format_log_message(
-            "Failed to send add_topic request to server",
-            error=str(e),
-            user_id=user_id,
-            topic_title=topic_title
-        ))
+    if success:
+        # Format and send message to the user
+        success_message = BOT_TOPIC_ADDED_SUCCESS.format(title=response_data['title'])
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text=BOT_CONNECTION_ERROR
+            text=success_message
+        )
+        
+        return True
+    else:
+        # Send error message to the user
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=BOT_TOPIC_ADDED_ERROR
         )
         
         return False
@@ -262,8 +290,8 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         topic_title=topic_title
     ))
     
-    # Add the topic
-    success = await add_topic(user_id, topic_title, chat_id, context)
+    # Add the topic (no parent topic for topics added directly by the user)
+    success = await add_topic(user_id, topic_title, chat_id, context, parent_topic_title=None)
     
     # Create keyboard with two buttons
     reply_markup = create_keyboard()
@@ -496,7 +524,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 ))
                 
                 # Format and send message to the user
-                title = topic_data['title'].split('(')[0]
+                title = topic_data['title']
                 explanation = topic_data.get('explanation')
                 
                 if explanation:
@@ -510,8 +538,8 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         # Create keyboard with buttons for each related topic
                         keyboard = []
                         for related_topic in related_topics:
-                            # Create a callback data with the topic and parent topic ID
-                            callback_data = f"add_{related_topic}|{topic_data['id']}"
+                            # Create a callback data with the topic and parent topic title
+                            callback_data = f"add_{related_topic}|{title}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data
@@ -599,55 +627,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         # Check if it's an add topic callback
         if callback_data.startswith("add_"):
-            # Extract the topic and parent topic ID
+            # Extract the topic and parent topic title
             parts = callback_data[4:].split('|')
             topic = parts[0]
-            parent_topic_id = int(parts[1]) if len(parts) > 1 else None
+            parent_topic_title = parts[1] if len(parts) > 1 else None
             
             logger.info(format_log_message(
                 "Parsed callback data",
                 topic=topic,
-                parent_topic_id=parent_topic_id
+                parent_topic_title=parent_topic_title
             ))
             
-            # Prepare the data to send to the FastAPI server
-            data = {
-                "user_id": user_id,
-                "topic_title": topic,
-                "parent_topic_id": parent_topic_id
-            }
-            
-            # Send the request to the FastAPI server
-            add_topic_url = f"http://{API_HOST}:{API_PORT}/bot/add_topic"
-            
-            logger.info(format_log_message(
-                "Sending add_topic request to server with parent_topic_id",
-                url=add_topic_url,
-                method="POST",
-                payload=data
-            ))
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(add_topic_url, json=data)
-                
-                if response.status_code == 200:
-                    logger.info(format_log_message(
-                        "Topic added successfully with parent_topic_id",
-                        user_id=user_id,
-                        topic=topic,
-                        parent_topic_id=parent_topic_id
-                    ))
-                    success = True
-                else:
-                    logger.error(format_log_message(
-                        "Error response from server when adding topic with parent_topic_id",
-                        status_code=response.status_code,
-                        error=response.text,
-                        user_id=user_id,
-                        topic=topic,
-                        parent_topic_id=parent_topic_id
-                    ))
-                    success = False
+            # Send the request to the server using the common function
+            success, _ = await send_add_topic_request(user_id, topic, parent_topic_title)
         
         # Just answer the callback query with a notification
         if success:

@@ -83,7 +83,7 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None) -> str:
     try:
         # Format the user prompt with the topic and parent topic if available
         if parent_topic:
-            user_prompt = f"{EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)}\n\nЭта является продолжением темы: {parent_topic}"
+            user_prompt = f"{EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)}\n\nЭта тема является продолжением темы: {parent_topic}"
         else:
             user_prompt = EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)
         

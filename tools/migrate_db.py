@@ -37,7 +37,7 @@ def create_new_database(db_path):
         title TEXT,
         explanation TEXT,
         related_topics TEXT,
-        parent_topic_id INTEGER,
+        parent_topic_title TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
@@ -120,15 +120,15 @@ def migrate_database():
         else:
             log("related_topics column already exists")
             
-        if "parent_topic_id" not in column_names:
-            log("Adding parent_topic_id column to topics table")
+        if "parent_topic_title" not in column_names:
+            log("Adding parent_topic_title column to topics table")
             
-            # Add the parent_topic_id column
-            cursor.execute("ALTER TABLE topics ADD COLUMN parent_topic_id INTEGER")
+            # Add the parent_topic_title column
+            cursor.execute("ALTER TABLE topics ADD COLUMN parent_topic_title TEXT")
             
             log("Column added successfully")
         else:
-            log("parent_topic_id column already exists")
+            log("parent_topic_title column already exists")
         
         # Commit the changes
         conn.commit()

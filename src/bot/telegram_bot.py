@@ -655,9 +655,9 @@ def main() -> None:
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(add_topic_conv_handler)
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
+    application.add_handler(add_topic_conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
     
     # Add handler for keyboard buttons

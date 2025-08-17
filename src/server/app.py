@@ -77,14 +77,14 @@ async def root():
 
 async def generate_and_save_explanation(topic_id: int, topic_title: str):
     """
-    Background task to generate an explanation for a topic and save it to the database.
+    Background task to generate an explanation and related topics for a topic and save them to the database.
     
     Args:
         topic_id: The ID of the topic
         topic_title: The title of the topic
     """
     logger.info(format_log_message(
-        "Starting background task to generate explanation",
+        "Starting background task to generate explanation and related topics",
         topic_id=topic_id,
         topic_title=topic_title
     ))
@@ -98,43 +98,32 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str):
         ))
         
         explanation = generate_explanation(topic_title)
-        
+
         logger.info(format_log_message(
-            "Received explanation from LLM service",
+            "Requesting related topics from LLM service with explanation context",
             topic_id=topic_id,
-            explanation_length=len(explanation) if explanation else 0
+            topic_title=topic_title
         ))
         
-        # Save explanation to database
-        logger.info(format_log_message(
-            "Saving explanation to database",
-            topic_id=topic_id
-        ))
-        
-        updated_topic = update_topic_explanation(topic_id, explanation)
+        related_topics = generate_related_topics(topic_title, explanation)
+        updated_topic = update_topic_explanation(topic_id, explanation, related_topics)
         
         if not updated_topic:
             logger.error(format_log_message(
-                "Failed to update topic with explanation",
+                "Failed to update topic with explanation and related topics",
                 topic_id=topic_id,
                 topic_title=topic_title
             ))
         else:
             logger.info(format_log_message(
-                "Successfully saved explanation to database",
+                "Successfully saved explanation and related topics to database",
                 topic_id=topic_id
             ))
             
-    except LLMServiceException as e:
-        logger.error(format_log_message(
-            "LLM service error when generating explanation",
-            topic_id=topic_id,
-            topic_title=topic_title,
-            error=str(e)
-        ))
+
     except Exception as e:
         logger.error(format_log_message(
-            "Unexpected error when generating explanation",
+            "Unexpected error when generating explanation or related topics",
             topic_id=topic_id,
             topic_title=topic_title,
             error=str(e),
@@ -210,31 +199,50 @@ async def bot_get_random_topic(request: Request):
                 topic_id=topic.id
             ))
         
-        # Generate related topics
+        # Get related topics from the database or generate them if not available
         related_topics = []
-        try:
-            logger.info(format_log_message(
-                "Generating related topics",
-                topic_id=topic.id,
-                topic_title=topic.title
-            ))
-            
-            related_topics = generate_related_topics(topic.title)
-            
-            logger.info(format_log_message(
-                "Received related topics from LLM service",
-                topic_id=topic.id,
-                related_topics_count=len(related_topics)
-            ))
-        except Exception as e:
-            logger.error(format_log_message(
-                "Error generating related topics",
-                topic_id=topic.id,
-                topic_title=topic.title,
-                error=str(e),
-                error_type=type(e).__name__
-            ))
-            # Continue even if related topics generation fails
+        if hasattr(topic, 'related_topics') and topic.related_topics:
+            try:
+                related_topics = json.loads(topic.related_topics)
+                logger.info(format_log_message(
+                    "Retrieved related topics from database",
+                    topic_id=topic.id,
+                    related_topics_count=len(related_topics)
+                ))
+            except Exception as e:
+                logger.error(format_log_message(
+                    "Error parsing related topics from database",
+                    topic_id=topic.id,
+                    error=str(e),
+                    error_type=type(e).__name__
+                ))
+                # Continue even if parsing fails
+        
+        # If no related topics in the database, generate them on-the-fly
+        if not related_topics:
+            try:
+                logger.info(format_log_message(
+                    "Generating related topics on-the-fly with explanation context",
+                    topic_id=topic.id,
+                    topic_title=topic.title
+                ))
+                
+                related_topics = generate_related_topics(topic.title, topic.explanation)
+                
+                logger.info(format_log_message(
+                    "Received related topics from LLM service",
+                    topic_id=topic.id,
+                    related_topics_count=len(related_topics)
+                ))
+            except Exception as e:
+                logger.error(format_log_message(
+                    "Error generating related topics",
+                    topic_id=topic.id,
+                    topic_title=topic.title,
+                    error=str(e),
+                    error_type=type(e).__name__
+                ))
+                # Continue even if related topics generation fails
         
         # Prepare response
         response = TopicResponse(

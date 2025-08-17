@@ -2,6 +2,7 @@ from datetime import datetime
 import random
 import sys
 import os
+import json
 from typing import List, Dict, Any, Optional
 
 # Add parent directory to path to allow imports from other modules
@@ -42,16 +43,19 @@ class Topic(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
     title = Column(String, index=True)
-    explanation = Column(Text, nullable=True)  # New column for storing explanations
+    explanation = Column(Text, nullable=True)  # Column for storing explanations
+    related_topics = Column(Text, nullable=True)  # New column for storing related topics as JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the model instance to a dictionary."""
+        related_topics_list = json.loads(self.related_topics) if self.related_topics else []
         return {
             "id": self.id,
             "user_id": self.user_id,
             "title": self.title,
             "explanation": self.explanation,
+            "related_topics": related_topics_list,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
@@ -261,21 +265,23 @@ def delete_topic(topic_id: int) -> bool:
     finally:
         db.close()
 
-def update_topic_explanation(topic_id: int, explanation: str) -> Optional[Topic]:
+def update_topic_explanation(topic_id: int, explanation: str, related_topics: Optional[List[str]] = None) -> Optional[Topic]:
     """
-    Update the explanation for an existing topic.
+    Update the explanation and related topics for an existing topic.
     
     Args:
         topic_id (int): ID of the topic to update
         explanation (str): New explanation for the topic
+        related_topics (Optional[List[str]]): List of related topics
     
     Returns:
         Optional[Topic]: The updated topic, or None if not found
     """
     logger.info(format_log_message(
-        "Updating topic explanation",
+        "Updating topic explanation and related topics",
         topic_id=topic_id,
-        explanation_length=len(explanation) if explanation else 0
+        explanation_length=len(explanation) if explanation else 0,
+        related_topics_count=len(related_topics) if related_topics else 0
     ))
     
     db = get_db()
@@ -286,11 +292,16 @@ def update_topic_explanation(topic_id: int, explanation: str) -> Optional[Topic]
         if topic:
             # Update the explanation
             topic.explanation = explanation
+            
+            # Update related topics if provided
+            if related_topics is not None:
+                topic.related_topics = json.dumps(related_topics)
+                
             db.commit()
             db.refresh(topic)
             
             logger.info(format_log_message(
-                "Topic explanation updated successfully",
+                "Topic explanation and related topics updated successfully",
                 topic_id=topic_id,
                 user_id=topic.user_id,
                 title=topic.title
@@ -304,7 +315,7 @@ def update_topic_explanation(topic_id: int, explanation: str) -> Optional[Topic]
         return topic
     except Exception as e:
         logger.error(format_log_message(
-            "Error updating topic explanation",
+            "Error updating topic explanation and related topics",
             topic_id=topic_id,
             error=str(e),
             error_type=type(e).__name__

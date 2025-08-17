@@ -125,30 +125,7 @@ def generate_explanation(topic: str) -> str:
             ))
             
             return "Извините, не удалось сгенерировать объяснение. Попробуйте позже."
-            
-    except httpx.TimeoutException:
-        logger.error(format_log_message(
-            "Timeout while requesting explanation from LLM",
-            topic=topic,
-            model=LLM_MODEL
-        ))
-        
-        raise LLMServiceException("Превышено время ожидания ответа от сервиса. Попробуйте позже.")
-    
-    except httpx.HTTPStatusError as e:
-        status_code = e.response.status_code
-        
-        logger.error(format_log_message(
-            "HTTP error while requesting explanation from LLM",
-            topic=topic,
-            status_code=status_code,
-            error=str(e)
-        ))
-        
-        if 400 <= status_code < 500:
-            raise LLMServiceException(f"Ошибка в запросе к сервису (код {status_code}). Пожалуйста, сообщите администратору.")
-        else:
-            raise LLMServiceException(f"Ошибка сервиса (код {status_code}). Попробуйте позже.")
+
     
     except Exception as e:
         logger.error(format_log_message(
@@ -160,12 +137,13 @@ def generate_explanation(topic: str) -> str:
         
         raise LLMServiceException(f"Произошла ошибка при генерации объяснения: {str(e)}")
 
-def generate_related_topics(topic: str) -> List[str]:
+def generate_related_topics(topic: str, explanation: Optional[str] = None) -> List[str]:
     """
     Generate a list of related topics for a given topic using an external LLM.
     
     Args:
         topic (str): The topic to generate related topics for
+        explanation (Optional[str]): The explanation of the topic to use as context
         
     Returns:
         List[str]: A list of related topics
@@ -174,8 +152,11 @@ def generate_related_topics(topic: str) -> List[str]:
         LLMServiceException: If there's an error communicating with the LLM service
     """
     try:
-        # Format the user prompt with the topic
-        user_prompt = RELATED_TOPICS_USER_PROMPT_TEMPLATE.format(topic=topic)
+        # Format the user prompt with the topic and explanation if available
+        if explanation:
+            user_prompt = f"{RELATED_TOPICS_USER_PROMPT_TEMPLATE.format(topic=topic)}\n\nВот объяснение темы для контекста:\n{explanation}"
+        else:
+            user_prompt = RELATED_TOPICS_USER_PROMPT_TEMPLATE.format(topic=topic)
         
         # Create messages for the LLM
         messages = [
@@ -222,27 +203,7 @@ def generate_related_topics(topic: str) -> List[str]:
             ))
             
             return []
-            
-    except httpx.TimeoutException:
-        logger.error(format_log_message(
-            "Timeout while requesting related topics from LLM",
-            topic=topic,
-            model=LLM_MODEL
-        ))
-        
-        return []
-    
-    except httpx.HTTPStatusError as e:
-        status_code = e.response.status_code
-        
-        logger.error(format_log_message(
-            "HTTP error while requesting related topics from LLM",
-            topic=topic,
-            status_code=status_code,
-            error=str(e)
-        ))
-        
-        return []
+
     
     except Exception as e:
         logger.error(format_log_message(

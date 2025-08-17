@@ -33,6 +33,22 @@ logger = setup_logging("BOT")
 WAITING_FOR_TOPIC = 1
 
 
+# Helper function to create keyboards
+def create_keyboard():
+    """
+    Create a keyboard with both default buttons.
+    
+    Returns:
+        ReplyKeyboardMarkup: The keyboard markup with both buttons
+    """
+    # Always include both buttons
+    keyboard = [
+        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+    ]
+    
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
 # Define a function to handle the /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
@@ -48,10 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ))
     
     # Create keyboard with two buttons
-    keyboard = [
-        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = create_keyboard()
     
     # Send welcome message with keyboard
     await update.message.reply_text(BOT_WELCOME_MESSAGE, reply_markup=reply_markup)
@@ -207,10 +220,7 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     success = await add_topic(user_id, topic_title, chat_id, context)
     
     # Create keyboard with two buttons
-    keyboard = [
-        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = create_keyboard()
     
     # If the topic was added successfully, show the keyboard again
     if success:
@@ -280,37 +290,18 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                     # Send the list
                     await update.message.reply_text(topics_text)
                     
-                    logger.info(format_log_message(
-                        "Sent topics list to user",
-                        user_id=user_id,
-                        chat_id=chat_id,
-                        topic_count=len(topics)
-                    ))
-                    
                     # Create keyboard with two buttons
-                    keyboard = [
-                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-                    ]
-                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    reply_markup = create_keyboard()
                     
                     # Show the keyboard again
                     await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                 else:
                     # No topics found
-                    # Create keyboard with add topic button
-                    keyboard = [
-                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC)]
-                    ]
-                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    # Create keyboard with both buttons
+                    reply_markup = create_keyboard()
                     
                     # Send message with keyboard
                     await update.message.reply_text(BOT_NO_TOPICS, reply_markup=reply_markup)
-                    
-                    logger.info(format_log_message(
-                        "Sent empty topics list message to user",
-                        user_id=user_id,
-                        chat_id=chat_id
-                    ))
             else:
                 error_text = response.text
                 logger.error(format_log_message(
@@ -321,12 +312,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ))
                 
                 await update.message.reply_text(BOT_TOPICS_LIST_ERROR)
-                
-                logger.info(format_log_message(
-                    "Sent error message to user",
-                    user_id=user_id,
-                    chat_id=chat_id
-                ))
+
     except Exception as e:
         logger.error(format_log_message(
             "Failed to send list_topics request to server",
@@ -335,12 +321,6 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         ))
         
         await update.message.reply_text(BOT_CONNECTION_ERROR)
-        
-        logger.info(format_log_message(
-            "Sent connection error message to user",
-            user_id=user_id,
-            chat_id=chat_id
-        ))
 
 # Define a function to handle the /topic command
 async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -405,20 +385,11 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         user_id=user_id
                     ))
                     
-                    # Create keyboard with add topic button
-                    keyboard = [
-                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC)]
-                    ]
-                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    # Create keyboard with both buttons
+                    reply_markup = create_keyboard()
                     
                     # Send message with keyboard
                     await update.message.reply_text(BOT_NO_TOPICS_FOR_EXPLANATION, reply_markup=reply_markup)
-                    
-                    logger.info(format_log_message(
-                        "Sent no topics message to user",
-                        user_id=user_id,
-                        chat_id=chat_id
-                    ))
                     
                     return
                 
@@ -464,10 +435,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         await update.message.reply_text(message, reply_markup=reply_markup)
                         
                         # Create keyboard with two buttons
-                        keyboard = [
-                            [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-                        ]
-                        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                        reply_markup = create_keyboard()
                         
                         # Show the keyboard again
                         await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
@@ -476,10 +444,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         await update.message.reply_text(message)
                         
                         # Create keyboard with two buttons
-                        keyboard = [
-                            [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-                        ]
-                        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                        reply_markup = create_keyboard()
                         
                         # Show the keyboard again
                         await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
@@ -491,10 +456,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     await update.message.reply_text(no_explanation_message)
                     
                     # Create keyboard with two buttons
-                    keyboard = [
-                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
-                    ]
-                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    reply_markup = create_keyboard()
                     
                     # Show the keyboard again
                     await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
@@ -623,13 +585,13 @@ def main() -> None:
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     # Add handler for keyboard buttons
+    application.add_handler(add_topic_conv_handler)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
         handle_keyboard_buttons
     ))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
-    application.add_handler(add_topic_conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
     
     

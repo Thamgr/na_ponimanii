@@ -8,13 +8,29 @@ import asyncio
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from env.config import TOKEN, API_HOST, API_PORT
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ContextTypes, ConversationHandler
+)
+from env.config import (
+    TOKEN, API_HOST, API_PORT,
+    BOT_WELCOME_MESSAGE, BOT_EMPTY_TOPIC_ERROR, BOT_TOPIC_ADDED_SUCCESS,
+    BOT_TOPIC_ADDED_ERROR, BOT_CONNECTION_ERROR, BOT_TOPIC_PROMPT,
+    BOT_CANCEL_CONFIRMATION, BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
+    BOT_TOPICS_LIST_ERROR, BOT_NO_TOPICS_FOR_EXPLANATION, BOT_TOPIC_EXPLANATION,
+    BOT_RELATED_TOPICS_PROMPT, BOT_NO_EXPLANATION, BOT_TOPIC_ERROR,
+    BOT_TOPIC_ADDED_FROM_CALLBACK, BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR,
+    BOT_UNKNOWN_COMMAND, BOT_KEYBOARD_ADD_TOPIC, BOT_KEYBOARD_STUDY_TOPIC,
+    BOT_KEYBOARD_WHAT_NEXT
+)
 from tools.logging_config import setup_logging, format_log_message
 
 # Set up component-specific logger
 logger = setup_logging("BOT")
+
+# Define conversation states
+WAITING_FOR_TOPIC = 1
 
 
 # Define a function to handle the /start command
@@ -31,15 +47,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         username=username
     ))
     
-    welcome_message = 'Привет, я твой бот! Используй /add <тема> чтобы добавить новую тему для изучения. Используй /list чтобы увидеть свои темы. Используй /topic чтобы получить объяснение случайной темы.'
+    # Create keyboard with two buttons
+    keyboard = [
+        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    await update.message.reply_text(welcome_message)
-    
-    logger.info(format_log_message(
-        "Sent welcome message",
-        user_id=user_id,
-        chat_id=chat_id
-    ))      
+    # Send welcome message with keyboard
+    await update.message.reply_text(BOT_WELCOME_MESSAGE, reply_markup=reply_markup)
 
 
 # Helper function to add a topic
@@ -70,7 +85,7 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
             user_id=user_id,
             chat_id=chat_id
         ))
-        await context.bot.send_message(chat_id=chat_id, text='Нужно указать тему')
+        await context.bot.send_message(chat_id=chat_id, text=BOT_EMPTY_TOPIC_ERROR)
         return False
     
     # Prepare the data to send to the FastAPI server
@@ -103,21 +118,12 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
                 ))
                 
                 # Format and send message to the user
-                topic_id = response_data['id']
-                success_message = f"Тема сохранена: {response_data['title']}\n\n" \
-                                 f"Я подготовлю объяснение этой темы. Скоро вы сможете его увидеть, используя команду /topic"
+                success_message = BOT_TOPIC_ADDED_SUCCESS.format(title=response_data['title'])
                 
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=success_message
                 )
-                
-                logger.info(format_log_message(
-                    "Sent success message to user",
-                    user_id=user_id,
-                    chat_id=chat_id,
-                    topic_id=topic_id
-                ))
                 
                 return True
             else:
@@ -132,14 +138,8 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
                 
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text='Произошла ошибка при добавлении темы.'
+                    text=BOT_TOPIC_ADDED_ERROR
                 )
-                
-                logger.info(format_log_message(
-                    "Sent error message to user",
-                    user_id=user_id,
-                    chat_id=chat_id
-                ))
                 
                 return False
     except Exception as e:
@@ -152,49 +152,99 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text='Не удалось связаться с сервером. Попробуйте позже.'
+            text=BOT_CONNECTION_ERROR
         )
-        
-        logger.info(format_log_message(
-            "Sent connection error message to user",
-            user_id=user_id,
-            chat_id=chat_id
-        ))
         
         return False
 
 # Define a function to handle the /add command
-async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle the /add command to add a new topic."""
+async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the /add command to start the topic addition process."""
     # Get the user ID and chat ID
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "Unknown"
     
-    # Get the command text
-    message_text = update.message.text
-    
     logger.info(format_log_message(
         "Received /add command",
         user_id=user_id,
         chat_id=chat_id,
-        username=username,
-        command=message_text
+        username=username
     ))
     
-    # Extract the topic title (everything after /add)
-    topic_title = ""
-    if len(message_text.split()) > 1:
-        topic_title = message_text.split(' ', 1)[1].strip()
+    # Prompt the user for a topic
+    await update.message.reply_text(BOT_TOPIC_PROMPT)
     
     logger.info(format_log_message(
-        "Extracted topic title from command",
+        "Sent topic prompt to user",
         user_id=user_id,
+        chat_id=chat_id
+    ))
+    
+    # Return the state to indicate we're waiting for a topic
+    return WAITING_FOR_TOPIC
+
+# Define a function to handle the topic response
+async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the user's response with the topic."""
+    # Get the user ID and chat ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    # Get the topic from the message
+    topic_title = update.message.text.strip()
+    
+    logger.info(format_log_message(
+        "Received topic from user",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username,
         topic_title=topic_title
     ))
     
     # Add the topic
-    await add_topic(user_id, topic_title, chat_id, context)
+    success = await add_topic(user_id, topic_title, chat_id, context)
+    
+    # Create keyboard with two buttons
+    keyboard = [
+        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    # If the topic was added successfully, show the keyboard again
+    if success:
+        await update.message.reply_text(
+            BOT_KEYBOARD_WHAT_NEXT,
+            reply_markup=reply_markup
+        )
+    
+    # End the conversation
+    return ConversationHandler.END
+
+# Define a function to handle the /cancel command
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the current conversation."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    logger.info(format_log_message(
+        "Received /cancel command",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username
+    ))
+    
+    await update.message.reply_text(BOT_CANCEL_CONFIRMATION)
+    
+    logger.info(format_log_message(
+        "Sent cancel confirmation to user",
+        user_id=user_id,
+        chat_id=chat_id
+    ))
+    
+    return ConversationHandler.END
 
 # Define a function to handle the /list command
 async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -244,7 +294,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 
                 if topics:
                     # Format the topics list
-                    topics_text = "Ваши темы:\n\n"
+                    topics_text = BOT_TOPICS_LIST_HEADER
                     for topic in topics:
                         topic_id = topic['id']
                         has_explanation = topic.get('explanation') is not None
@@ -260,9 +310,25 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                         chat_id=chat_id,
                         topic_count=len(topics)
                     ))
+                    
+                    # Create keyboard with two buttons
+                    keyboard = [
+                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+                    ]
+                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    
+                    # Show the keyboard again
+                    await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                 else:
                     # No topics found
-                    await update.message.reply_text('У вас пока нет сохраненных тем. Используйте /add <тема> чтобы добавить тему.')
+                    # Create keyboard with add topic button
+                    keyboard = [
+                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC)]
+                    ]
+                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    
+                    # Send message with keyboard
+                    await update.message.reply_text(BOT_NO_TOPICS, reply_markup=reply_markup)
                     
                     logger.info(format_log_message(
                         "Sent empty topics list message to user",
@@ -278,7 +344,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                     user_id=user_id
                 ))
                 
-                await update.message.reply_text('Произошла ошибка при получении списка тем.')
+                await update.message.reply_text(BOT_TOPICS_LIST_ERROR)
                 
                 logger.info(format_log_message(
                     "Sent error message to user",
@@ -292,7 +358,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             user_id=user_id
         ))
         
-        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+        await update.message.reply_text(BOT_CONNECTION_ERROR)
         
         logger.info(format_log_message(
             "Sent connection error message to user",
@@ -343,7 +409,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     error=str(err),
                     user_id=user_id
                 ))
-                await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+                await update.message.reply_text(BOT_CONNECTION_ERROR)
                 return
             
             # Check if response is valid
@@ -352,7 +418,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     "No response received from server",
                     user_id=user_id
                 ))
-                await update.message.reply_text('Не удалось получить ответ от сервера. Попробуйте позже.')
+                await update.message.reply_text(BOT_CONNECTION_ERROR)
                 return
                 
             if response.status_code == 200:
@@ -363,7 +429,14 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         user_id=user_id
                     ))
                     
-                    await update.message.reply_text('У вас нет сохраненных тем. Используйте /add <тема> чтобы добавить тему для изучения.')
+                    # Create keyboard with add topic button
+                    keyboard = [
+                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC)]
+                    ]
+                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    
+                    # Send message with keyboard
+                    await update.message.reply_text(BOT_NO_TOPICS_FOR_EXPLANATION, reply_markup=reply_markup)
                     
                     logger.info(format_log_message(
                         "Sent no topics message to user",
@@ -389,8 +462,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 
                 if explanation:
                     # Prepare the message
-                    message = f"📚 Тема: {title}\n\n{explanation}\n\n"
-                    message += f"Эта тема удалена из вашего списка."
+                    message = BOT_TOPIC_EXPLANATION.format(title=title, explanation=explanation)
                     
                     # Get related topics if available
                     related_topics = topic_data.get('related_topics', [])
@@ -407,21 +479,39 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                             )])
                         
                         # Add a message about the buttons
-                        message += "\n\nВыберите смежную тему для добавления:"
+                        message += BOT_RELATED_TOPICS_PROMPT
                         
                         # Create the reply markup
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
-                        # Send the message with buttons
+                        # Send the message with inline buttons
                         await update.message.reply_text(message, reply_markup=reply_markup)
+                        
+                        # Create keyboard with two buttons
+                        keyboard = [
+                            [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+                        ]
+                        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                        
+                        # Show the keyboard again
+                        await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                         
                         logger.info(format_log_message(
                             "Sent topic explanation with related topics buttons to user",
                             user_id=user_id
                         ))
                     else:
-                        # Send the message without buttons
+                        # Send the message without inline buttons
                         await update.message.reply_text(message)
+                        
+                        # Create keyboard with two buttons
+                        keyboard = [
+                            [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+                        ]
+                        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                        
+                        # Show the keyboard again
+                        await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                         
                         logger.info(format_log_message(
                             "Sent topic explanation without related topics to user",
@@ -430,13 +520,18 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 else:
                     # No explanation available
                     # No related topics for topics without explanations
-                    no_explanation_message = (
-                        f"📚 Тема: {title}\n\n"
-                        f"К сожалению, не удалось сгенерировать объяснение для этой темы.\n\n"
-                        f"Эта тема удалена из вашего списка. Используйте /add чтобы добавить новые темы."
-                    )
+                    no_explanation_message = BOT_NO_EXPLANATION.format(title=title)
                     
                     await update.message.reply_text(no_explanation_message)
+                    
+                    # Create keyboard with two buttons
+                    keyboard = [
+                        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+                    ]
+                    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    
+                    # Show the keyboard again
+                    await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                     
                     logger.info(format_log_message(
                         "Sent no explanation message to user",
@@ -451,7 +546,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     user_id=user_id
                 ))
                 
-                await update.message.reply_text('Произошла ошибка при получении темы.')
+                await update.message.reply_text(BOT_TOPIC_ERROR)
                 
                 logger.info(format_log_message(
                     "Sent error message to user",
@@ -464,7 +559,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             user_id=user_id
         ))
         
-        await update.message.reply_text('Не удалось связаться с сервером. Попробуйте позже.')
+        await update.message.reply_text(BOT_CONNECTION_ERROR)
         
         logger.info(format_log_message(
             "Sent connection error message to user",
@@ -509,7 +604,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         # Just answer the callback query with a notification
         if success:
-            await query.answer(f"Тема '{topic}' добавлена в ваш список!")
+            await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
             
             logger.info(format_log_message(
                 "Sent success notification for callback query",
@@ -518,7 +613,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 topic=topic
             ))
         else:
-            await query.answer("Не удалось добавить тему")
+            await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
             
             logger.info(format_log_message(
                 "Sent failure notification for callback query",
@@ -533,7 +628,35 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             callback_data=callback_data
         ))
         
-        await query.answer("Неизвестная команда")
+        await query.answer(BOT_UNKNOWN_COMMAND)
+
+
+# Define a function to handle keyboard button presses
+async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle keyboard button presses."""
+    # Get the message text
+    message_text = update.message.text
+    
+    # Get user information
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    logger.info(format_log_message(
+        "Received keyboard button press",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username,
+        button=message_text
+    ))
+    
+    # Handle the button press
+    if message_text == BOT_KEYBOARD_ADD_TOPIC:
+        # Call the add_topic_command function
+        return await add_topic_command(update, context)
+    elif message_text == BOT_KEYBOARD_STUDY_TOPIC:
+        # Call the get_topic_command function
+        return await get_topic_command(update, context)
 
 
 # Main function to run the bot
@@ -548,12 +671,28 @@ def main() -> None:
     # Create the Application and pass it your bot's token from config.py
     application = Application.builder().token(TOKEN).build()
 
+    # Create conversation handler for adding topics
+    add_topic_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("add", add_topic_command)],
+        states={
+            WAITING_FOR_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_command)]
+    )
+
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("add", add_topic_command))
+    application.add_handler(add_topic_conv_handler)
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
     application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Add handler for keyboard buttons
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND &
+        (filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$") | filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$")),
+        handle_keyboard_buttons
+    ))
     
     logger.info(format_log_message(
         "Handlers registered, starting polling"

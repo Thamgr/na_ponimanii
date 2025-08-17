@@ -498,11 +498,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     
                     # Show the keyboard again
                     await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
-                    
-                    logger.info(format_log_message(
-                        "Sent no explanation message to user",
-                        user_id=user_id
-                    ))
+
             else:
                 error_text = response.text
                 logger.error(format_log_message(
@@ -513,11 +509,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 ))
                 
                 await update.message.reply_text(BOT_TOPIC_ERROR)
-                
-                logger.info(format_log_message(
-                    "Sent error message to user",
-                    user_id=user_id
-                ))
+
     except Exception as e:
         logger.error(format_log_message(
             "Failed to send random_topic request to server",
@@ -526,12 +518,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ))
         
         await update.message.reply_text(BOT_CONNECTION_ERROR)
-        
-        logger.info(format_log_message(
-            "Sent connection error message to user",
-            user_id=user_id,
-            chat_id=chat_id
-        ))
+
 
 # Define a function to handle button clicks
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -559,41 +546,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Extract the topic
         topic = callback_data[4:]
         
-        logger.info(format_log_message(
-            "Extracted topic from callback data",
-            user_id=user_id,
-            topic=topic
-        ))
-        
         # Add the topic
         success = await add_topic(user_id, topic, chat_id, context)
         
         # Just answer the callback query with a notification
         if success:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
-            
-            logger.info(format_log_message(
-                "Sent success notification for callback query",
-                user_id=user_id,
-                chat_id=chat_id,
-                topic=topic
-            ))
         else:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
-            
-            logger.info(format_log_message(
-                "Sent failure notification for callback query",
-                user_id=user_id,
-                chat_id=chat_id,
-                topic=topic
-            ))
     else:
-        logger.warning(format_log_message(
-            "Unknown callback data",
-            user_id=user_id,
-            callback_data=callback_data
-        ))
-        
         await query.answer(BOT_UNKNOWN_COMMAND)
 
 
@@ -648,7 +609,12 @@ def main() -> None:
             MessageHandler(filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"), add_topic_command)
         ],
         states={
-            WAITING_FOR_TOPIC: [MessageHandler(filters.TEXT, receive_topic)]
+            WAITING_FOR_TOPIC: [MessageHandler(
+                filters.TEXT &
+                ~filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$") &
+                ~filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
+                receive_topic
+            )]
         },
         fallbacks=[MessageHandler(filters.COMMAND, lambda update, context: ConversationHandler.END)]
     )

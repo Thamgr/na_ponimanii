@@ -333,11 +333,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         async with httpx.AsyncClient() as client:
 
-            logger.info(format_log_message("point 0"))
-
             response = await client.post(random_topic_url, json=data)
-
-            logger.info(format_log_message("point 1"))
             
             if response.status_code == 200:
                 # Check if we got a topic
@@ -375,8 +371,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     # Prepare the message
                     message = f"📚 Тема: {title}\n\n{explanation}\n\n"
                     message += f"Эта тема удалена из вашего списка."
-
-                    logger.info(format_log_message("point 2"))
                     
                     # Get related topics if available
                     related_topics = topic_data.get('related_topics', [])
@@ -391,8 +385,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                                 related_topic,
                                 callback_data=callback_data
                             )])
-
-                        logger.info(format_log_message("point 3"))
                         
                         # Add a message about the buttons
                         message += "\n\nВыберите смежную тему для добавления:"

@@ -2,6 +2,7 @@ import httpx
 import json
 import sys
 import os
+import time
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -203,36 +204,11 @@ async def bot_get_random_topic(request: Request):
         
         # Generate explanation if not already present
         if not topic.explanation:
-            try:
-                logger.info(format_log_message(
-                    "Generating explanation for topic",
-                    topic_id=topic.id,
-                    topic_title=topic.title
-                ))
-                
-                explanation = generate_explanation(topic.title)
-                
-                logger.info(format_log_message(
-                    "Received explanation from LLM service",
-                    topic_id=topic.id,
-                    explanation_length=len(explanation) if explanation else 0
-                ))
-                
-                topic = update_topic_explanation(topic.id, explanation)
-                
-                logger.info(format_log_message(
-                    "Updated topic with explanation",
-                    topic_id=topic.id
-                ))
-            except Exception as e:
-                logger.error(format_log_message(
-                    "Error generating explanation",
-                    topic_id=topic.id,
-                    topic_title=topic.title,
-                    error=str(e),
-                    error_type=type(e).__name__
-                ))
-                # Continue even if explanation generation fails
+            time.sleep(3)
+            logger.warning(format_log_message(
+                "Explanation was not ready - wait another 3s",
+                topic_id=topic.id
+            ))
         
         # Generate related topics
         related_topics = []

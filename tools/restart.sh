@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # Na Ponimanii Restart Script
-# This script restarts the Na Ponimanii bot and server services
-
-# Exit on any error
-set -e
+# This script restarts the bot and server
 
 # Define colors for output
 GREEN='\033[0;32m'
@@ -17,39 +14,36 @@ log() {
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    log "${RED}Please run as root (use sudo)${NC}"
+# Define paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+STOP_SCRIPT="$SCRIPT_DIR/stop.sh"
+START_SCRIPT="$SCRIPT_DIR/start.sh"
+
+# Check if scripts exist
+if [ ! -f "$STOP_SCRIPT" ] || [ ! -f "$START_SCRIPT" ]; then
+    log "${RED}Stop or start script not found. Please make sure they exist.${NC}"
     exit 1
 fi
 
-# Define services
-BOT_SERVICE="na_ponimanii_bot.service"
-SERVER_SERVICE="na_ponimanii_server.service"
+# Make scripts executable
+chmod +x "$STOP_SCRIPT"
+chmod +x "$START_SCRIPT"
 
-# Check if services exist
-if [ ! -f "/etc/systemd/system/$BOT_SERVICE" ] || [ ! -f "/etc/systemd/system/$SERVER_SERVICE" ]; then
-    log "${RED}Services are not installed.${NC}"
-    exit 1
-fi
+# Print header
+echo -e "\n${YELLOW}=======================================${NC}"
+echo -e "${YELLOW}   Na Ponimanii Restart Process   ${NC}"
+echo -e "${YELLOW}=======================================${NC}\n"
 
-# Restart server service
-log "${YELLOW}Restarting server service...${NC}"
-systemctl restart $SERVER_SERVICE
-log "${GREEN}Server service restarted.${NC}"
+# Stop services
+log "${YELLOW}Stopping services...${NC}"
+$STOP_SCRIPT
 
-# Wait a moment for the server to start
-log "${YELLOW}Waiting for server to start...${NC}"
-sleep 5
+# Wait a moment
+log "${YELLOW}Waiting for services to stop completely...${NC}"
+sleep 3
 
-# Restart bot service
-log "${YELLOW}Restarting bot service...${NC}"
-systemctl restart $BOT_SERVICE
-log "${GREEN}Bot service restarted.${NC}"
-
-# Check service status
-log "${YELLOW}Checking service status...${NC}"
-systemctl status $SERVER_SERVICE --no-pager
-systemctl status $BOT_SERVICE --no-pager
+# Start services
+log "${YELLOW}Starting services...${NC}"
+$START_SCRIPT
 
 log "${GREEN}Restart completed successfully!${NC}"

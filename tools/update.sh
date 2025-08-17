@@ -18,109 +18,93 @@ log() {
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    log "${RED}Please run as root (use sudo)${NC}"
-    exit 1
-fi
-
 # Define paths
-INSTALL_DIR="/opt/na_ponimanii"
-TEMP_DIR="/tmp/na_ponimanii_update"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+VENV_DIR="$PROJECT_DIR/venv"
+STOP_SCRIPT="$SCRIPT_DIR/stop.sh"
+START_SCRIPT="$SCRIPT_DIR/start.sh"
 GITHUB_REPO="https://github.com/yourusername/na_ponimanii.git"  # Replace with your actual repo URL
 BRANCH="main"  # Replace with your branch name if different
 
-# Define services
-BOT_SERVICE="na_ponimanii_bot.service"
-SERVER_SERVICE="na_ponimanii_server.service"
-
-# Check if services exist
-if [ ! -f "/etc/systemd/system/$BOT_SERVICE" ] || [ ! -f "/etc/systemd/system/$SERVER_SERVICE" ]; then
-    log "${RED}Services are not installed. Please run deploy.sh first.${NC}"
+# Check if scripts exist
+if [ ! -f "$STOP_SCRIPT" ] || [ ! -f "$START_SCRIPT" ]; then
+    log "${RED}Stop or start script not found. Please make sure they exist.${NC}"
     exit 1
 fi
+
+# Make scripts executable
+chmod +x "$STOP_SCRIPT"
+chmod +x "$START_SCRIPT"
 
 # Print header
 echo -e "\n${BLUE}=======================================${NC}"
 echo -e "${BLUE}   Na Ponimanii Update Process   ${NC}"
 echo -e "${BLUE}=======================================${NC}\n"
 
-# Create temp directory
-log "${YELLOW}Creating temporary directory...${NC}"
-rm -rf $TEMP_DIR
-mkdir -p $TEMP_DIR
+# Stop services
+log "${YELLOW}Stopping services...${NC}"
+$STOP_SCRIPT
 
-# Clone the repository
-log "${YELLOW}Cloning the latest version from GitHub...${NC}"
-git clone --branch $BRANCH $GITHUB_REPO $TEMP_DIR
+# Check if .env file exists
+if [ -f "$PROJECT_DIR/env/.env" ]; then
+    log "${YELLOW}Found .env file, will preserve it during update...${NC}"
+fi
 
-# Check if .env file exists in the installation directory
-if [ -f "$INSTALL_DIR/.env" ]; then
-    log "${YELLOW}Preserving existing .env file...${NC}"
-    cp $INSTALL_DIR/.env $TEMP_DIR/
+# Pull latest changes
+log "${YELLOW}Pulling latest changes from GitHub...${NC}"
+cd $PROJECT_DIR
+if [ -d "$PROJECT_DIR/.git" ]; then
+    # If it's a git repository, pull the latest changes
+    git pull origin $BRANCH
 else
-    log "${RED}Warning: No .env file found in installation directory.${NC}"
-    if [ -f "$TEMP_DIR/.env.example" ]; then
-        log "${YELLOW}Copying .env.example to .env...${NC}"
-        cp $TEMP_DIR/.env.example $TEMP_DIR/.env
-        log "${RED}Please update the .env file with your configuration.${NC}"
+    # If it's not a git repository, clone the repository to a temporary directory and copy the files
+    log "${YELLOW}Not a git repository. Cloning to temporary directory...${NC}"
+    TEMP_DIR="/tmp/na_ponimanii_update"
+    rm -rf $TEMP_DIR
+    git clone --branch $BRANCH $GITHUB_REPO $TEMP_DIR
+    
+    # Copy files from temporary directory
+    log "${YELLOW}Copying files from temporary directory...${NC}"
+    rsync -av --exclude='.git' --exclude='logs' --exclude='venv' --exclude='env/.env' --exclude='env/.env.*' $TEMP_DIR/ $PROJECT_DIR/
+    
+    # Make sure env directory exists
+    mkdir -p "$PROJECT_DIR/env"
+    
+    # Clean up
+    rm -rf $TEMP_DIR
+fi
+
+# Make sure the env directory exists
+mkdir -p "$PROJECT_DIR/env"
+
+# Check if .env file exists after update
+if [ ! -f "$PROJECT_DIR/env/.env" ]; then
+    log "${YELLOW}No .env file found after update. Creating from .env.example if available...${NC}"
+    if [ -f "$PROJECT_DIR/env/.env.example" ]; then
+        cp "$PROJECT_DIR/env/.env.example" "$PROJECT_DIR/env/.env"
+        log "${YELLOW}Created .env file from .env.example. Please update it with your configuration.${NC}"
     else
         log "${RED}No .env.example file found. You will need to create a .env file manually.${NC}"
+        touch "$PROJECT_DIR/env/.env"
     fi
 fi
 
-# Stop services
-log "${YELLOW}Stopping services...${NC}"
-systemctl stop $BOT_SERVICE
-systemctl stop $SERVER_SERVICE
+# Update dependencies in virtual environment
+if [ -d "$VENV_DIR" ]; then
+    log "${YELLOW}Updating dependencies...${NC}"
+    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+else
+    log "${YELLOW}Creating virtual environment...${NC}"
+    python3 -m venv $VENV_DIR
+    $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+fi
 
-# Backup the current installation
-log "${YELLOW}Backing up current installation...${NC}"
-BACKUP_DIR="$INSTALL_DIR.backup.$(date +%Y%m%d%H%M%S)"
-cp -r $INSTALL_DIR $BACKUP_DIR
-log "${GREEN}Backup created at $BACKUP_DIR${NC}"
-
-# Copy new files to installation directory
-log "${YELLOW}Updating files...${NC}"
-rsync -av --exclude='.git' --exclude='logs' $TEMP_DIR/ $INSTALL_DIR/
-
-# Ensure logs directory exists
-log "${YELLOW}Ensuring logs directory exists...${NC}"
-mkdir -p $INSTALL_DIR/logs
-
-# Set correct permissions
-log "${YELLOW}Setting permissions...${NC}"
-find $INSTALL_DIR -name "*.py" -exec chmod 644 {} \;
-find $INSTALL_DIR -name "*.md" -exec chmod 644 {} \;
-find $INSTALL_DIR -name "*.sh" -exec chmod 755 {} \;
-chmod 644 $INSTALL_DIR/requirements.txt
-chmod 644 $INSTALL_DIR/.env 2>/dev/null || true
-
-# Ensure directory structure exists
-log "${YELLOW}Ensuring directory structure...${NC}"
-mkdir -p $INSTALL_DIR/src/bot
-mkdir -p $INSTALL_DIR/src/server
-mkdir -p $INSTALL_DIR/env
-mkdir -p $INSTALL_DIR/tools
-
-# Update dependencies
-log "${YELLOW}Updating dependencies...${NC}"
-pip3 install -r $INSTALL_DIR/requirements.txt
+# Create logs directory if it doesn't exist
+mkdir -p "$PROJECT_DIR/logs"
 
 # Start services
 log "${YELLOW}Starting services...${NC}"
-systemctl start $SERVER_SERVICE
-sleep 5  # Wait for server to start
-systemctl start $BOT_SERVICE
-
-# Check service status
-log "${YELLOW}Checking service status...${NC}"
-systemctl status $SERVER_SERVICE --no-pager
-systemctl status $BOT_SERVICE --no-pager
-
-# Clean up
-log "${YELLOW}Cleaning up...${NC}"
-rm -rf $TEMP_DIR
+$START_SCRIPT
 
 log "${GREEN}Update completed successfully!${NC}"
-log "${YELLOW}If you encounter any issues, you can restore the backup from $BACKUP_DIR${NC}"

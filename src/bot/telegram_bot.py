@@ -614,7 +614,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # Define a function to handle keyboard button presses
-@thinking_decorator
 async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle keyboard button presses."""
     # Get the message text

@@ -496,7 +496,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 ))
                 
                 # Format and send message to the user
-                title = topic_data['title']
+                title = topic_data['title'].split('(')[0]
                 explanation = topic_data.get('explanation')
                 
                 if explanation:
@@ -511,7 +511,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         keyboard = []
                         for related_topic in related_topics:
                             # Create a callback data with the topic
-                            callback_data = f"add_{related_topic}"
+                            callback_data = f"add_{related_topic} ({title})"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data

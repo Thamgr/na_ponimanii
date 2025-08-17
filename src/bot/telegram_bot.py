@@ -22,7 +22,7 @@ from env.config import (
     BOT_RELATED_TOPICS_PROMPT, BOT_NO_EXPLANATION, BOT_TOPIC_ERROR,
     BOT_TOPIC_ADDED_FROM_CALLBACK, BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR,
     BOT_UNKNOWN_COMMAND, BOT_KEYBOARD_ADD_TOPIC, BOT_KEYBOARD_STUDY_TOPIC,
-    BOT_KEYBOARD_WHAT_NEXT
+    BOT_KEYBOARD_WHAT_NEXT, BOT_THINKING_MESSAGE
 )
 from tools.logging_config import setup_logging, format_log_message
 
@@ -31,6 +31,49 @@ logger = setup_logging("BOT")
 
 # Define conversation states
 WAITING_FOR_TOPIC = 1
+
+
+# Decorator for handlers to show and remove "Thinking..." message
+def thinking_decorator(handler_func):
+    """
+    Decorator that shows a "Thinking..." message at the start of a handler
+    and removes it when the handler finishes.
+    """
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        # Get the chat ID
+        chat_id = update.effective_chat.id
+        
+        # Send the "Thinking..." message
+        thinking_message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=BOT_THINKING_MESSAGE
+        )
+        
+        # Store the message ID in the context
+        if not context.user_data.get('thinking_messages'):
+            context.user_data['thinking_messages'] = []
+        
+        context.user_data['thinking_messages'].append(thinking_message.message_id)
+        
+        # Call the handler function
+        result = await handler_func(update, context, *args, **kwargs)
+        
+        # Delete the "Thinking..." message
+        if context.user_data.get('thinking_messages'):
+            message_id = context.user_data['thinking_messages'].pop()
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except Exception as e:
+                logger.error(format_log_message(
+                    "Failed to delete thinking message",
+                    error=str(e),
+                    chat_id=chat_id,
+                    message_id=message_id
+                ))
+        
+        return result
+    
+    return wrapper
 
 
 # Helper function to create keyboards
@@ -50,6 +93,7 @@ def create_keyboard():
 
 
 # Define a function to handle the /start command
+@thinking_decorator
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     user_id = update.effective_user.id
@@ -171,6 +215,7 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         return False
 
 # Define a function to handle the /add command
+@thinking_decorator
 async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the /add command to start the topic addition process."""
     # Get the user ID and chat ID
@@ -198,6 +243,7 @@ async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return WAITING_FOR_TOPIC
 
 # Define a function to handle the topic response
+@thinking_decorator
 async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the user's response with the topic."""
     # Get the user ID and chat ID
@@ -233,6 +279,7 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ConversationHandler.END
 
 # Define a function to handle the case when a user presses the add topic button while in the waiting for topic state
+@thinking_decorator
 async def handle_add_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the case when a user presses the add topic button while in the waiting for topic state."""
     # Get the user ID and chat ID
@@ -254,6 +301,7 @@ async def handle_add_topic_in_waiting_state(update: Update, context: ContextType
     return WAITING_FOR_TOPIC
 
 # Define a function to handle the case when a user presses the study topic button while in the waiting for topic state
+@thinking_decorator
 async def handle_study_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the case when a user presses the study topic button while in the waiting for topic state."""
     # Get the user ID and chat ID
@@ -275,6 +323,7 @@ async def handle_study_topic_in_waiting_state(update: Update, context: ContextTy
     return ConversationHandler.END
 
 # Define a function to handle the /list command
+@thinking_decorator
 async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /list command to list user's topics."""
     # Get the user ID
@@ -365,6 +414,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(BOT_CONNECTION_ERROR)
 
 # Define a function to handle the /topic command
+@thinking_decorator
 async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /topic command to get a random topic explanation and remove it."""
     # Get the user ID
@@ -525,6 +575,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 # Define a function to handle button clicks
+@thinking_decorator
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button clicks for adding related topics."""
     query = update.callback_query
@@ -563,6 +614,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # Define a function to handle keyboard button presses
+@thinking_decorator
 async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle keyboard button presses."""
     # Get the message text
@@ -658,3 +710,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+

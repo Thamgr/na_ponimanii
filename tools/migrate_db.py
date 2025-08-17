@@ -189,7 +189,7 @@ if __name__ == "__main__":
         
         # Backup the old database if it exists and not forced
         if os.path.exists(db_path) and not args.force:
-            backup_path = f"{db_path}.old.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            backup_path = f"./backups/db/{db_path}.old.{datetime.now().strftime('%Y%m%d%H%M%S')}"
             try:
                 log(f"Moving old database to {backup_path}...")
                 os.rename(db_path, backup_path)

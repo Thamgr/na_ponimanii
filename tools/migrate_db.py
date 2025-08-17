@@ -67,7 +67,7 @@ def migrate_database():
         log(f"Current file permissions: {permissions}")
         
         # Create a backup of the database
-        backup_path = f"{db_path}.backup.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        backup_path = f"./backups/db/{db_path}.backup.{datetime.now().strftime('%Y%m%d%H%M%S')}"
         try:
             log(f"Creating backup at {backup_path}...")
             shutil.copy2(db_path, backup_path)

@@ -40,6 +40,10 @@ if [ ! -d "$VENV_DIR" ]; then
     log "${GREEN}Virtual environment created and dependencies installed.${NC}"
 fi
 
+# Create logs directory if it doesn't exist
+log "${YELLOW}Creating logs directory...${NC}"
+mkdir -p "$PROJECT_DIR/logs"
+
 # Start services
 log "${YELLOW}Starting services...${NC}"
 

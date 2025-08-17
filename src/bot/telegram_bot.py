@@ -336,7 +336,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             response = None
             
             try:
-                response = await client.post(random_topic_url, json=data, timeout=5)
+                response = await client.post(random_topic_url, json=data, timeout=10)
             except Exception as err:
                 logger.error(format_log_message(
                     "Error retrieving random topic",

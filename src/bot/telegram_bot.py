@@ -333,7 +333,9 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         async with httpx.AsyncClient() as client:
 
-            response = await client.post(random_topic_url, json=data)
+            response = await client.post(random_topic_url, json=data, timeout=0.1)
+
+            logger.info(format_log_message("Retrieved random topic", status_code=response.status_code))
             
             if response.status_code == 200:
                 # Check if we got a topic

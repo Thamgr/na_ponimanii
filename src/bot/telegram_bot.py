@@ -785,13 +785,31 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_callback))
     
     
-    # Add job to clean up parent topic map every hour
-    job_queue = application.job_queue
-    job_queue.run_repeating(cleanup_parent_topic_map, interval=3600, first=3600)
-    
-    logger.info(format_log_message(
-        "Handlers registered, cleanup job scheduled, starting polling"
-    ))
+    # Try to add job to clean up parent topic map every hour
+    # Note: This requires the job-queue extra: pip install "python-telegram-bot[job-queue]"
+    try:
+        job_queue = application.job_queue
+        if job_queue:
+            job_queue.run_repeating(cleanup_parent_topic_map, interval=3600, first=3600)
+            logger.info(format_log_message(
+                "Handlers registered, cleanup job scheduled, starting polling"
+            ))
+        else:
+            logger.warning(format_log_message(
+                "JobQueue not available, cleanup job not scheduled"
+            ))
+            logger.info(format_log_message(
+                "Handlers registered, starting polling"
+            ))
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error setting up job queue",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        logger.info(format_log_message(
+            "Handlers registered, starting polling"
+        ))
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)

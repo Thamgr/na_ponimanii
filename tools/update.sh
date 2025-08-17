@@ -7,7 +7,6 @@ VENV_DIR="$PROJECT_DIR/venv"
 STOP_SCRIPT="$SCRIPT_DIR/stop.sh"
 START_SCRIPT="$SCRIPT_DIR/start.sh"
 GITHUB_REPO="https://github.com/yourusername/na_ponimanii.git"  # Replace with your actual repo URL
-BRANCH="main"  # Replace with your branch name if different
 
 # Make scripts executable
 chmod +x "$STOP_SCRIPT"
@@ -22,11 +21,11 @@ mkdir -p "$PROJECT_DIR/logs"
 # Pull latest changes
 cd $PROJECT_DIR
 if [ -d "$PROJECT_DIR/.git" ]; then
-    git pull origin $BRANCH
+    git pull origin
 else
     TEMP_DIR="/tmp/na_ponimanii_update"
     rm -rf $TEMP_DIR
-    git clone --branch $BRANCH $GITHUB_REPO $TEMP_DIR
+    git clone $GITHUB_REPO $TEMP_DIR
     rsync -av --exclude='.git' --exclude='logs' --exclude='venv' --exclude='env/.env' $TEMP_DIR/ $PROJECT_DIR/
     rm -rf $TEMP_DIR
 fi

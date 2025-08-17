@@ -2,6 +2,8 @@ import httpx
 import json
 import sys
 import os
+import time
+import asyncio
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -13,6 +15,7 @@ from tools.logging_config import setup_logging, format_log_message
 
 # Set up component-specific logger
 logger = setup_logging("BOT")
+
 
 # Define a function to handle the /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -80,7 +83,7 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
     try:
         add_topic_url = f"http://{API_HOST}:{API_PORT}/bot/add_topic"
         
-        logger.debug(format_log_message(
+        logger.info(format_log_message(
             "Sending add_topic request to server",
             url=add_topic_url,
             method="POST",
@@ -184,7 +187,7 @@ async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if len(message_text.split()) > 1:
         topic_title = message_text.split(' ', 1)[1].strip()
     
-    logger.debug(format_log_message(
+    logger.info(format_log_message(
         "Extracted topic title from command",
         user_id=user_id,
         topic_title=topic_title
@@ -217,7 +220,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         list_topics_url = f"http://{API_HOST}:{API_PORT}/bot/list_topics"
         
-        logger.debug(format_log_message(
+        logger.info(format_log_message(
             "Sending list_topics request to server",
             url=list_topics_url,
             method="POST",
@@ -321,7 +324,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         random_topic_url = f"http://{API_HOST}:{API_PORT}/bot/random_topic"
         
-        logger.debug(format_log_message(
+        logger.info(format_log_message(
             "Sending random_topic request to server",
             url=random_topic_url,
             method="POST",
@@ -329,7 +332,12 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ))
         
         async with httpx.AsyncClient() as client:
+
+            logger.info(format_log_message("point 0"))
+
             response = await client.post(random_topic_url, json=data)
+
+            logger.info(format_log_message("point 1"))
             
             if response.status_code == 200:
                 # Check if we got a topic
@@ -367,16 +375,11 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     # Prepare the message
                     message = f"📚 Тема: {title}\n\n{explanation}\n\n"
                     message += f"Эта тема удалена из вашего списка."
+
+                    logger.info(format_log_message("point 2"))
                     
                     # Get related topics if available
                     related_topics = topic_data.get('related_topics', [])
-                    
-                    logger.debug(format_log_message(
-                        "Topic has explanation and related topics",
-                        user_id=user_id,
-                        topic_id=topic_data.get('id'),
-                        related_topics_count=len(related_topics) if related_topics else 0
-                    ))
                     
                     if related_topics:
                         # Create keyboard with buttons for each related topic
@@ -388,6 +391,8 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                                 related_topic,
                                 callback_data=callback_data
                             )])
+
+                        logger.info(format_log_message("point 3"))
                         
                         # Add a message about the buttons
                         message += "\n\nВыберите смежную тему для добавления:"
@@ -400,10 +405,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         
                         logger.info(format_log_message(
                             "Sent topic explanation with related topics buttons to user",
-                            user_id=user_id,
-                            chat_id=chat_id,
-                            topic_id=topic_data.get('id'),
-                            related_topics_count=len(related_topics)
+                            user_id=user_id
                         ))
                     else:
                         # Send the message without buttons
@@ -411,9 +413,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         
                         logger.info(format_log_message(
                             "Sent topic explanation without related topics to user",
-                            user_id=user_id,
-                            chat_id=chat_id,
-                            topic_id=topic_data.get('id')
+                            user_id=user_id
                         ))
                 else:
                     # No explanation available
@@ -428,9 +428,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     
                     logger.info(format_log_message(
                         "Sent no explanation message to user",
-                        user_id=user_id,
-                        chat_id=chat_id,
-                        topic_id=topic_data.get('id')
+                        user_id=user_id
                     ))
             else:
                 error_text = response.text
@@ -445,8 +443,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 
                 logger.info(format_log_message(
                     "Sent error message to user",
-                    user_id=user_id,
-                    chat_id=chat_id
+                    user_id=user_id
                 ))
     except Exception as e:
         logger.error(format_log_message(
@@ -489,7 +486,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Extract the topic
         topic = callback_data[4:]
         
-        logger.debug(format_log_message(
+        logger.info(format_log_message(
             "Extracted topic from callback data",
             user_id=user_id,
             topic=topic

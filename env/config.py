@@ -11,7 +11,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "LOL")
 
 # FastAPI Configuration
 # Get host and port from environment variables with fallbacks
-API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_HOST = os.getenv("API_HOST", "localhost")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # Database Configuration

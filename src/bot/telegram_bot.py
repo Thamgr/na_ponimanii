@@ -17,7 +17,7 @@ from env.config import (
     TOKEN, API_HOST, API_PORT,
     BOT_WELCOME_MESSAGE, BOT_EMPTY_TOPIC_ERROR, BOT_TOPIC_ADDED_SUCCESS,
     BOT_TOPIC_ADDED_ERROR, BOT_CONNECTION_ERROR, BOT_TOPIC_PROMPT,
-    BOT_CANCEL_CONFIRMATION, BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
+    BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
     BOT_TOPICS_LIST_ERROR, BOT_NO_TOPICS_FOR_EXPLANATION, BOT_TOPIC_EXPLANATION,
     BOT_RELATED_TOPICS_PROMPT, BOT_NO_EXPLANATION, BOT_TOPIC_ERROR,
     BOT_TOPIC_ADDED_FROM_CALLBACK, BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR,
@@ -220,30 +220,6 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
     
     # End the conversation
-    return ConversationHandler.END
-
-# Define a function to handle the /cancel command
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancel the current conversation."""
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    logger.info(format_log_message(
-        "Received /cancel command",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username
-    ))
-    
-    await update.message.reply_text(BOT_CANCEL_CONFIRMATION)
-    
-    logger.info(format_log_message(
-        "Sent cancel confirmation to user",
-        user_id=user_id,
-        chat_id=chat_id
-    ))
-    
     return ConversationHandler.END
 
 # Define a function to handle the /list command
@@ -495,11 +471,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         
                         # Show the keyboard again
                         await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
-                        
-                        logger.info(format_log_message(
-                            "Sent topic explanation with related topics buttons to user",
-                            user_id=user_id
-                        ))
                     else:
                         # Send the message without inline buttons
                         await update.message.reply_text(message)
@@ -512,11 +483,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         
                         # Show the keyboard again
                         await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
-                        
-                        logger.info(format_log_message(
-                            "Sent topic explanation without related topics to user",
-                            user_id=user_id
-                        ))
                 else:
                     # No explanation available
                     # No related topics for topics without explanations
@@ -651,12 +617,16 @@ async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_
     ))
     
     # Handle the button press
-    if message_text == BOT_KEYBOARD_ADD_TOPIC:
-        # Call the add_topic_command function
-        return await add_topic_command(update, context)
-    elif message_text == BOT_KEYBOARD_STUDY_TOPIC:
+    if message_text == BOT_KEYBOARD_STUDY_TOPIC:
         # Call the get_topic_command function
         return await get_topic_command(update, context)
+    else:
+        # Unknown button
+        logger.warning(format_log_message(
+            "Unknown keyboard button in handler",
+            user_id=user_id,
+            button=message_text
+        ))
 
 
 # Main function to run the bot
@@ -673,11 +643,14 @@ def main() -> None:
 
     # Create conversation handler for adding topics
     add_topic_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("add", add_topic_command)],
+        entry_points=[
+            CommandHandler("add", add_topic_command),
+            MessageHandler(filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"), add_topic_command)
+        ],
         states={
-            WAITING_FOR_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic)]
+            WAITING_FOR_TOPIC: [MessageHandler(filters.TEXT, receive_topic)]
         },
-        fallbacks=[CommandHandler("cancel", cancel_command)]
+        fallbacks=[MessageHandler(filters.COMMAND, lambda update, context: ConversationHandler.END)]
     )
 
     # Add handlers
@@ -689,8 +662,7 @@ def main() -> None:
     
     # Add handler for keyboard buttons
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND &
-        (filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$") | filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$")),
+        filters.TEXT & ~filters.COMMAND & filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
         handle_keyboard_buttons
     ))
     

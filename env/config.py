@@ -64,10 +64,7 @@ BOT_TOPIC_ADDED_ERROR = 'Произошла ошибка при добавлен
 BOT_CONNECTION_ERROR = 'Не удалось связаться с сервером. Попробуйте позже.'
 
 # Add topic command
-BOT_TOPIC_PROMPT = 'Пожалуйста, отправьте тему, которую вы хотите добавить:\n\nИли отправьте /cancel для отмены.'
-
-# Cancel command
-BOT_CANCEL_CONFIRMATION = 'Операция отменена.'
+BOT_TOPIC_PROMPT = 'Пожалуйста, отправьте тему, которую вы хотите добавить:'
 
 # List topics command
 BOT_NO_TOPICS = 'У вас пока нет сохраненных тем. Используйте /add чтобы добавить тему.'

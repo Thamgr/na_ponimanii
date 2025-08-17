@@ -1,0 +1,18 @@
+[Unit]
+Description=Na Ponimanii FastAPI Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/na_ponimanii
+ExecStart=/usr/bin/python3 /opt/na_ponimanii/src/server/app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=na_ponimanii_server
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -5,17 +5,19 @@ This module provides functions to interact with an external LLM service
 for generating explanations of topics.
 """
 import re
-
-import logging
 import os
+import sys
 from typing import Optional, List
+
+# Add parent directory to path to allow imports from other modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 from langchain_core.messages import AIMessage
 import httpx
 
-from config import (
+from env.config import (
     LLM_API_KEY,
     LLM_API_BASE,
     LLM_MODEL,
@@ -26,9 +28,10 @@ from config import (
     RELATED_TOPICS_SYSTEM_PROMPT,
     RELATED_TOPICS_USER_PROMPT_TEMPLATE,
 )
+from tools.logging_config import setup_logging, format_log_message
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up component-specific logger
+logger = setup_logging("LLM")
 
 class LLMServiceException(Exception):
     """Exception raised for errors in the LLM service."""
@@ -56,7 +59,11 @@ def get_llm_client() -> ChatOpenAI:
             max_tokens=LLM_MAX_TOKENS,
         )
     except Exception as e:
-        logger.error(f"Error creating LLM client: {e}")
+        logger.error(format_log_message(
+            "Error creating LLM client",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
         raise LLMServiceException(f"Failed to initialize LLM client: {str(e)}")
 
 def generate_explanation(topic: str) -> str:
@@ -86,7 +93,14 @@ def generate_explanation(topic: str) -> str:
         llm = get_llm_client()
         
         # Send the request to the LLM
-        logger.info(f"Sending request to LLM for topic: {topic}")
+        logger.info(format_log_message(
+            "Sending request to LLM for explanation",
+            topic=topic,
+            model=LLM_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS
+        ))
+        
         response = llm.invoke(messages)
         
         # Extract and return the content
@@ -96,19 +110,40 @@ def generate_explanation(topic: str) -> str:
             # Clean the explanation from HTML tags
             explanation = clean_html_tags(explanation)
             
-            logger.info(f"Received explanation for topic: {topic}")
+            logger.info(format_log_message(
+                "Received explanation from LLM",
+                topic=topic,
+                explanation_length=len(explanation) if explanation else 0
+            ))
+            
             return explanation
         else:
-            logger.error(f"Unexpected response type: {type(response)}")
+            logger.error(format_log_message(
+                "Unexpected response type from LLM",
+                topic=topic,
+                response_type=str(type(response))
+            ))
+            
             return "Извините, не удалось сгенерировать объяснение. Попробуйте позже."
             
     except httpx.TimeoutException:
-        logger.error(f"Timeout while requesting explanation for topic: {topic}")
+        logger.error(format_log_message(
+            "Timeout while requesting explanation from LLM",
+            topic=topic,
+            model=LLM_MODEL
+        ))
+        
         raise LLMServiceException("Превышено время ожидания ответа от сервиса. Попробуйте позже.")
     
     except httpx.HTTPStatusError as e:
         status_code = e.response.status_code
-        logger.error(f"HTTP error {status_code} while requesting explanation for topic: {topic}")
+        
+        logger.error(format_log_message(
+            "HTTP error while requesting explanation from LLM",
+            topic=topic,
+            status_code=status_code,
+            error=str(e)
+        ))
         
         if 400 <= status_code < 500:
             raise LLMServiceException(f"Ошибка в запросе к сервису (код {status_code}). Пожалуйста, сообщите администратору.")
@@ -116,7 +151,13 @@ def generate_explanation(topic: str) -> str:
             raise LLMServiceException(f"Ошибка сервиса (код {status_code}). Попробуйте позже.")
     
     except Exception as e:
-        logger.error(f"Error generating explanation for topic '{topic}': {e}")
+        logger.error(format_log_message(
+            "Error generating explanation",
+            topic=topic,
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        
         raise LLMServiceException(f"Произошла ошибка при генерации объяснения: {str(e)}")
 
 def generate_related_topics(topic: str) -> List[str]:
@@ -146,7 +187,14 @@ def generate_related_topics(topic: str) -> List[str]:
         llm = get_llm_client()
         
         # Send the request to the LLM
-        logger.info(f"Sending request to LLM for related topics to: {topic}")
+        logger.info(format_log_message(
+            "Sending request to LLM for related topics",
+            topic=topic,
+            model=LLM_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS
+        ))
+        
         response = llm.invoke(messages)
         
         # Extract and return the content
@@ -159,23 +207,51 @@ def generate_related_topics(topic: str) -> List[str]:
             # Parse the content into a list of topics
             topics = parse_topics_from_text(content)
             
-            logger.info(f"Received {len(topics)} related topics for: {topic}")
+            logger.info(format_log_message(
+                "Received related topics from LLM",
+                topic=topic,
+                related_topics_count=len(topics)
+            ))
+            
             return topics
         else:
-            logger.error(f"Unexpected response type: {type(response)}")
+            logger.error(format_log_message(
+                "Unexpected response type from LLM",
+                topic=topic,
+                response_type=str(type(response))
+            ))
+            
             return []
             
     except httpx.TimeoutException:
-        logger.error(f"Timeout while requesting related topics for: {topic}")
+        logger.error(format_log_message(
+            "Timeout while requesting related topics from LLM",
+            topic=topic,
+            model=LLM_MODEL
+        ))
+        
         return []
     
     except httpx.HTTPStatusError as e:
         status_code = e.response.status_code
-        logger.error(f"HTTP error {status_code} while requesting related topics for: {topic}")
+        
+        logger.error(format_log_message(
+            "HTTP error while requesting related topics from LLM",
+            topic=topic,
+            status_code=status_code,
+            error=str(e)
+        ))
+        
         return []
     
     except Exception as e:
-        logger.error(f"Error generating related topics for '{topic}': {e}")
+        logger.error(format_log_message(
+            "Error generating related topics",
+            topic=topic,
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        
         return []
 
 def parse_topics_from_text(text: str) -> List[str]:
@@ -226,9 +302,24 @@ def clean_html_tags(text: str) -> str:
 
 if __name__ == "__main__":
     # Simple test if run directly
-    logging.basicConfig(level=logging.INFO)
     try:
+        logger.info(format_log_message(
+            "Running LLM service test",
+            test_topic="Python programming"
+        ))
+        
         explanation = generate_explanation("Python programming")
+        
+        logger.info(format_log_message(
+            "LLM service test completed successfully",
+            explanation_length=len(explanation) if explanation else 0
+        ))
+        
         print(explanation)
     except LLMServiceException as e:
+        logger.error(format_log_message(
+            "LLM service test failed",
+            error=str(e)
+        ))
+        
         print(f"Error: {e}")

@@ -1,0 +1,496 @@
+import httpx
+import json
+import sys
+import os
+
+# Add parent directory to path to allow imports from other modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
+
+from env.config import API_HOST, API_PORT, TOKEN
+from .database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
+from .llm_service import generate_explanation, generate_related_topics, LLMServiceException
+from tools.logging_config import setup_logging, format_log_message
+
+# Set up component-specific logger
+logger = setup_logging("SERVER")
+
+# Create FastAPI application
+app = FastAPI(
+    title="Na Ponimanii API",
+    description="API for Na Ponimanii Telegram Bot",
+    version="0.1.0"
+)
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the database on application startup."""
+    logger.info(format_log_message(
+        "Initializing database"
+    ))
+    
+    init_db()
+    
+    logger.info(format_log_message(
+        "Database initialized successfully"
+    ))
+
+# Define request and response models
+class TopicCreate(BaseModel):
+    """Request model for creating a topic."""
+    user_id: int
+    title: str
+class TopicResponse(BaseModel):
+    """Response model for a topic."""
+    id: int
+    user_id: int
+    title: str
+    explanation: Optional[str] = None
+    created_at: Optional[str] = None
+    related_topics: Optional[List[str]] = None
+    created_at: Optional[str] = None
+
+class TopicListResponse(BaseModel):
+    """Response model for a list of topics."""
+    topics: List[TopicResponse]
+        
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Custom exception handler to format error responses."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail}
+    )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint for health check."""
+    return {"status": "running"}
+
+async def generate_and_save_explanation(topic_id: int, topic_title: str):
+    """
+    Background task to generate an explanation for a topic and save it to the database.
+    
+    Args:
+        topic_id: The ID of the topic
+        topic_title: The title of the topic
+    """
+    logger.info(format_log_message(
+        "Starting background task to generate explanation",
+        topic_id=topic_id,
+        topic_title=topic_title
+    ))
+    
+    try:
+        # Generate explanation
+        logger.info(format_log_message(
+            "Requesting explanation from LLM service",
+            topic_id=topic_id,
+            topic_title=topic_title
+        ))
+        
+        explanation = generate_explanation(topic_title)
+        
+        logger.info(format_log_message(
+            "Received explanation from LLM service",
+            topic_id=topic_id,
+            explanation_length=len(explanation) if explanation else 0
+        ))
+        
+        # Save explanation to database
+        logger.info(format_log_message(
+            "Saving explanation to database",
+            topic_id=topic_id
+        ))
+        
+        updated_topic = update_topic_explanation(topic_id, explanation)
+        
+        if not updated_topic:
+            logger.error(format_log_message(
+                "Failed to update topic with explanation",
+                topic_id=topic_id,
+                topic_title=topic_title
+            ))
+        else:
+            logger.info(format_log_message(
+                "Successfully saved explanation to database",
+                topic_id=topic_id
+            ))
+            
+    except LLMServiceException as e:
+        logger.error(format_log_message(
+            "LLM service error when generating explanation",
+            topic_id=topic_id,
+            topic_title=topic_title,
+            error=str(e)
+        ))
+    except Exception as e:
+        logger.error(format_log_message(
+            "Unexpected error when generating explanation",
+            topic_id=topic_id,
+            topic_title=topic_title,
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+ 
+
+
+@app.post("/bot/random_topic", response_model=Optional[TopicResponse])
+async def bot_get_random_topic(request: Request):
+    """
+    Get a random topic for a user, explain it, and delete it.
+    
+    Args:
+        request: The request containing the user ID
+        
+    Returns:
+        The topic data with explanation, or None if no topics found
+    """
+    logger.info(format_log_message(
+        "Received random_topic request",
+        client_host=request.client.host,
+        method=request.method
+    ))
+    
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        
+        logger.debug(format_log_message(
+            "Parsed random_topic request body",
+            data=data
+        ))
+        
+        # Validate required fields
+        if 'user_id' not in data:
+            logger.warning(format_log_message(
+                "Missing user_id in random_topic request",
+                data=data
+            ))
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        user_id = data['user_id']
+        
+        logger.info(format_log_message(
+            "Getting random topic for user",
+            user_id=user_id
+        ))
+        
+        # Get a random topic for the user
+        topic = get_random_topic_for_user(user_id)
+        
+        if not topic:
+            logger.info(format_log_message(
+                "No topics found for user",
+                user_id=user_id
+            ))
+            return None
+        
+        logger.info(format_log_message(
+            "Retrieved random topic",
+            user_id=user_id,
+            topic_id=topic.id,
+            topic_title=topic.title,
+            has_explanation=topic.explanation is not None
+        ))
+        
+        # Generate explanation if not already present
+        if not topic.explanation:
+            try:
+                logger.info(format_log_message(
+                    "Generating explanation for topic",
+                    topic_id=topic.id,
+                    topic_title=topic.title
+                ))
+                
+                explanation = generate_explanation(topic.title)
+                
+                logger.info(format_log_message(
+                    "Received explanation from LLM service",
+                    topic_id=topic.id,
+                    explanation_length=len(explanation) if explanation else 0
+                ))
+                
+                topic = update_topic_explanation(topic.id, explanation)
+                
+                logger.info(format_log_message(
+                    "Updated topic with explanation",
+                    topic_id=topic.id
+                ))
+            except Exception as e:
+                logger.error(format_log_message(
+                    "Error generating explanation",
+                    topic_id=topic.id,
+                    topic_title=topic.title,
+                    error=str(e),
+                    error_type=type(e).__name__
+                ))
+                # Continue even if explanation generation fails
+        
+        # Generate related topics
+        related_topics = []
+        try:
+            logger.info(format_log_message(
+                "Generating related topics",
+                topic_id=topic.id,
+                topic_title=topic.title
+            ))
+            
+            related_topics = generate_related_topics(topic.title)
+            
+            logger.info(format_log_message(
+                "Received related topics from LLM service",
+                topic_id=topic.id,
+                related_topics_count=len(related_topics)
+            ))
+        except Exception as e:
+            logger.error(format_log_message(
+                "Error generating related topics",
+                topic_id=topic.id,
+                topic_title=topic.title,
+                error=str(e),
+                error_type=type(e).__name__
+            ))
+            # Continue even if related topics generation fails
+        
+        # Prepare response
+        response = TopicResponse(
+            id=topic.id,
+            user_id=topic.user_id,
+            title=topic.title,
+            explanation=topic.explanation,
+            created_at=topic.created_at.isoformat() if topic.created_at else None,
+            related_topics=related_topics
+        )
+        
+        # Delete the topic
+        logger.info(format_log_message(
+            "Deleting topic after retrieval",
+            topic_id=topic.id
+        ))
+        
+        delete_topic(topic.id)
+        
+        logger.info(format_log_message(
+            "Random topic request completed successfully",
+            user_id=user_id,
+            topic_id=topic.id
+        ))
+        
+        return response
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing random topic request",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise HTTPException(status_code=500, detail="Failed to get random topic")
+
+
+@app.post("/bot/add_topic", response_model=TopicResponse)
+async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
+    """
+    Endpoint for the Telegram bot to add a topic.
+    
+    Args:
+        request: The request containing the command data
+        
+    Returns:
+        The added topic data or an error response
+    """
+    logger.info(format_log_message(
+        "Received add_topic request",
+        client_host=request.client.host,
+        method=request.method
+    ))
+    
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        
+        logger.debug(format_log_message(
+            "Parsed add_topic request body",
+            data=data
+        ))
+        
+        # Validate required fields
+        if 'user_id' not in data:
+            logger.warning(format_log_message(
+                "Missing user_id in add_topic request",
+                data=data
+            ))
+            raise HTTPException(status_code=400, detail="user_id is required")
+            
+        if 'topic_title' not in data:
+            logger.warning(format_log_message(
+                "Missing topic_title in add_topic request",
+                data=data
+            ))
+            raise HTTPException(status_code=400, detail="topic_title is required")
+        
+        user_id = data['user_id']
+        topic_title = data['topic_title']
+        
+        logger.info(format_log_message(
+            "Processing add_topic request",
+            user_id=user_id,
+            topic_title=topic_title
+        ))
+        
+        # Check if topic title is empty
+        if not topic_title.strip():
+            logger.warning(format_log_message(
+                "Empty topic_title provided",
+                user_id=user_id
+            ))
+            # No topic provided
+            raise HTTPException(status_code=400, detail="topic_title cannot be empty")
+        
+        # Add the topic to the database (without explanation initially)
+        logger.info(format_log_message(
+            "Adding topic to database",
+            user_id=user_id,
+            topic_title=topic_title
+        ))
+        
+        db_topic = add_topic(user_id, topic_title)
+        
+        logger.info(format_log_message(
+            "Topic added to database",
+            user_id=user_id,
+            topic_id=db_topic.id,
+            topic_title=db_topic.title
+        ))
+        
+        # Schedule background task to generate and save explanation
+        logger.info(format_log_message(
+            "Scheduling background task to generate explanation",
+            topic_id=db_topic.id,
+            topic_title=topic_title
+        ))
+        
+        background_tasks.add_task(
+            generate_and_save_explanation,
+            topic_id=db_topic.id,
+            topic_title=topic_title
+        )
+        
+        # Return the topic data
+        response = TopicResponse(
+            id=db_topic.id,
+            user_id=db_topic.user_id,
+            title=db_topic.title,
+            explanation=None,  # Explanation will be added later
+            created_at=db_topic.created_at.isoformat() if db_topic.created_at else None
+        )
+        
+        logger.info(format_log_message(
+            "Add_topic request completed successfully",
+            user_id=user_id,
+            topic_id=db_topic.id
+        ))
+        
+        return response
+    
+    except ValueError:
+        # Handle invalid JSON
+        logger.error(format_log_message(
+            "Received invalid JSON in add_topic request",
+            client_host=request.client.host
+        ))
+        raise HTTPException(status_code=400, detail="invalid json")
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing add_topic request",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/bot/list_topics", response_model=TopicListResponse)
+async def bot_list_topics(request: Request):
+    """
+    Endpoint for the Telegram bot to list topics.
+    
+    Args:
+        request: The request containing the command data
+        
+    Returns:
+        A list of topics for the user
+    """
+    logger.info(format_log_message(
+        "Received list_topics request",
+        client_host=request.client.host,
+        method=request.method
+    ))
+    
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        
+        logger.debug(format_log_message(
+            "Parsed list_topics request body",
+            data=data
+        ))
+        
+        # Validate required fields
+        if 'user_id' not in data:
+            logger.warning(format_log_message(
+                "Missing user_id in list_topics request",
+                data=data
+            ))
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        user_id = data['user_id']
+        
+        logger.info(format_log_message(
+            "Retrieving topics for user",
+            user_id=user_id
+        ))
+        
+        # Get topics from the database
+        topics = list_topics(user_id)
+        
+        logger.info(format_log_message(
+            "Retrieved topics from database",
+            user_id=user_id,
+            topic_count=len(topics)
+        ))
+        
+        # Return the topics list
+        response = TopicListResponse(topics=topics)
+        
+        logger.info(format_log_message(
+            "List_topics request completed successfully",
+            user_id=user_id,
+            topic_count=len(topics)
+        ))
+        
+        return response
+    
+    except ValueError:
+        # Handle invalid JSON
+        logger.error(format_log_message(
+            "Received invalid JSON in list_topics request",
+            client_host=request.client.host
+        ))
+        raise HTTPException(status_code=400, detail="invalid json")
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing list_topics request",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    logger.info(f"Starting FastAPI server on {API_HOST}:{API_PORT}")
+    uvicorn.run(app, host=API_HOST, port=API_PORT)

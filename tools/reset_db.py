@@ -4,9 +4,14 @@ Script to reset the database by deleting the database file and recreating it.
 """
 
 import os
+import sys
 import logging
-from config import DB_PATH
-from database import init_db
+
+# Add parent directory to path to allow imports from other modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from env.config import DB_PATH
+from src.server.database import init_db
 
 # Set up logging
 logging.basicConfig(

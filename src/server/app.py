@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from env.config import API_HOST, API_PORT, TOKEN
-from .database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
-from .llm_service import generate_explanation, generate_related_topics, LLMServiceException
+from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
+from src.server.llm_service import generate_explanation, generate_related_topics, LLMServiceException
 from tools.logging_config import setup_logging, format_log_message
 
 # Set up component-specific logger

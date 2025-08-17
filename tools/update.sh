@@ -93,12 +93,36 @@ fi
 # Update dependencies in virtual environment
 if [ -d "$VENV_DIR" ]; then
     log "${YELLOW}Updating dependencies...${NC}"
+    $VENV_DIR/bin/pip install --upgrade pip
     $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    
+    # Install specific packages explicitly
+    log "${YELLOW}Installing required packages explicitly...${NC}"
+    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy langchain langchain-core langchain-openai
 else
     log "${YELLOW}Creating virtual environment...${NC}"
     python3 -m venv $VENV_DIR
+    $VENV_DIR/bin/pip install --upgrade pip
     $VENV_DIR/bin/pip install -r $PROJECT_DIR/requirements.txt
+    
+    # Install specific packages explicitly
+    log "${YELLOW}Installing required packages explicitly...${NC}"
+    $VENV_DIR/bin/pip install httpx python-telegram-bot fastapi uvicorn python-dotenv sqlalchemy langchain langchain-core langchain-openai
 fi
+
+# Verify packages are installed and show versions
+log "${YELLOW}Checking installed packages...${NC}"
+$VENV_DIR/bin/pip list | grep httpx || echo "httpx not found!"
+$VENV_DIR/bin/pip list | grep telegram || echo "python-telegram-bot not found!"
+$VENV_DIR/bin/pip list | grep fastapi || echo "fastapi not found!"
+
+# Test imports
+log "${YELLOW}Testing Python imports...${NC}"
+$VENV_DIR/bin/python -c "import httpx; print('httpx version:', httpx.__version__)" || log "${RED}Failed to import httpx${NC}"
+$VENV_DIR/bin/python -c "import fastapi; print('fastapi version:', fastapi.__version__)" || log "${RED}Failed to import fastapi${NC}"
+$VENV_DIR/bin/python -c "import telegram; print('telegram version:', telegram.__version__)" || log "${RED}Failed to import telegram${NC}"
+
+log "${GREEN}Dependencies updated successfully.${NC}"
 
 # Create logs directory if it doesn't exist
 mkdir -p "$PROJECT_DIR/logs"

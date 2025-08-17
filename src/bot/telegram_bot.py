@@ -624,9 +624,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         callback_data=callback_data
     ))
     
-    try:
-        # Check if it's an add topic callback
-        if callback_data.startswith("add_"):
+    # Default success value
+    success = False
+    topic = None
+    
+    # Check if it's an add topic callback
+    if callback_data.startswith("add_"):
+        try:
             # Extract the topic and parent topic title
             parts = callback_data[4:].split('|')
             topic = parts[0]
@@ -640,21 +644,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             # Send the request to the server using the common function
             success, _ = await send_add_topic_request(user_id, topic, parent_topic_title)
-        
-        # Just answer the callback query with a notification
-        if success:
+        except Exception as e:
+            logger.error(format_log_message(
+                "Error processing add topic callback",
+                error=str(e),
+                error_type=type(e).__name__,
+                callback_data=callback_data
+            ))
+            success = False
+            
+        # Answer the callback query with a notification
+        if success and topic:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
         else:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
-    except Exception as e:
-        logger.error(format_log_message(
-            "Error processing callback query",
-            error=str(e),
-            error_type=type(e).__name__,
-            callback_data=callback_data
-        ))
-        await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
     else:
+        # Not a recognized callback
         await query.answer(BOT_UNKNOWN_COMMAND)
 
 

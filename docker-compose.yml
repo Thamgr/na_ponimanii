@@ -15,6 +15,7 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8000:8000"
+      - "8001:8001"  # Bot metrics port
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000"]
@@ -28,3 +29,47 @@ services:
         /app/venv/bin/python src/server/app.py &
         /app/venv/bin/python src/bot/telegram_bot.py
       "
+    networks:
+      - na_ponimanii_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: na_ponimanii_prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - na_ponimanii_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: na_ponimanii_grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - na_ponimanii_network
+
+networks:
+  na_ponimanii_network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

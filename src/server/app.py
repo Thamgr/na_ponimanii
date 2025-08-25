@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
+from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from env.config import API_HOST, API_PORT, TOKEN
 from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
@@ -26,6 +27,22 @@ app = FastAPI(
     description="API for Na Ponimanii Telegram Bot",
     version="0.1.0"
 )
+
+# Add Prometheus middleware
+app.add_middleware(
+    PrometheusMiddleware,
+    app_name="na_ponimanii_server",
+    group_paths=True,
+    prefix="na_ponimanii"
+)
+
+# Add metrics endpoint
+app.add_route("/metrics", handle_metrics)
+
+# Log that metrics are enabled
+logger.info(format_log_message(
+    "Prometheus metrics enabled at /metrics endpoint"
+))
 
 # Initialize database on startup
 @app.on_event("startup")

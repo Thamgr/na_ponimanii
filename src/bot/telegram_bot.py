@@ -9,6 +9,12 @@ from typing import Tuple, Dict, Optional
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+# Import metrics
+from src.bot.metrics import (
+    start_metrics_server, COMMAND_COUNTER, MESSAGE_COUNTER,
+    REQUEST_LATENCY, TOPIC_COUNTER, EXPLANATION_COUNTER, LatencyTimer
+)
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -105,6 +111,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "Unknown"
     
+    # Increment command counter
+    COMMAND_COUNTER.labels(command="start").inc()
+    
     logger.info(format_log_message(
         "Received /start command",
         user_id=user_id,
@@ -154,8 +163,10 @@ async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_ti
             parent_topic_title=parent_topic_title
         ))
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(add_topic_url, json=data)
+        # Use latency timer to measure request time
+        with LatencyTimer(endpoint="add_topic"):
+            async with httpx.AsyncClient() as client:
+                response = await client.post(add_topic_url, json=data)
             
             if response.status_code == 200:
                 response_data = response.json()
@@ -228,6 +239,8 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
     success, response_data = await send_add_topic_request(user_id, topic_title, parent_topic_title)
     
     if success:
+        # Increment topic counter
+        TOPIC_COUNTER.labels(source="user").inc()
         # Format and send message to the user
         success_message = BOT_TOPIC_ADDED_SUCCESS.format(title=response_data['title'])
         
@@ -254,6 +267,9 @@ async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "Unknown"
+    
+    # Increment command counter
+    COMMAND_COUNTER.labels(command="add").inc()
     
     logger.info(format_log_message(
         "Received /add command",
@@ -363,6 +379,9 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "Unknown"
     
+    # Increment command counter
+    COMMAND_COUNTER.labels(command="list").inc()
+    
     logger.info(format_log_message(
         "Received /list command",
         user_id=user_id,
@@ -454,6 +473,9 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "Unknown"
     
+    # Increment command counter
+    COMMAND_COUNTER.labels(command="topic").inc()
+    
     logger.info(format_log_message(
         "Received /topic command",
         user_id=user_id,
@@ -532,6 +554,9 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 explanation = topic_data.get('explanation')
                 
                 if explanation:
+                    # Increment explanation counter
+                    EXPLANATION_COUNTER.inc()
+                    
                     # Prepare the message
                     message = BOT_TOPIC_EXPLANATION.format(title=title, explanation=explanation)
                     
@@ -658,6 +683,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             # Send the request to the server using the common function
             success, _ = await send_add_topic_request(user_id, topic, parent_topic_title)
+            
+            # Increment topic counter for related topics
+            if success:
+                TOPIC_COUNTER.labels(source="related").inc()
         except Exception as e:
             logger.error(format_log_message(
                 "Error processing add topic callback",
@@ -741,6 +770,13 @@ def main() -> None:
         "Starting Telegram bot",
         api_host=API_HOST,
         api_port=API_PORT
+    ))
+    
+    # Start Prometheus metrics server
+    metrics_port = start_metrics_server(port=8001)
+    logger.info(format_log_message(
+        "Started Prometheus metrics server",
+        port=metrics_port
     ))
     
     # Create the Application and pass it your bot's token from config.py

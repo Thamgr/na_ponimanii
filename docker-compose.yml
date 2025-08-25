@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: na_ponimanii_app
     volumes:
       - ./data:/app/data
@@ -10,12 +12,19 @@ services:
       - ./env:/app/env
     environment:
       - API_HOST=0.0.0.0
+      - PYTHONUNBUFFERED=1
     ports:
       - "8000:8000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     command: >
       bash -c "
         mkdir -p /app/data &&
-        python src/server/app.py &
-        python src/bot/telegram_bot.py
+        /app/venv/bin/python src/server/app.py &
+        /app/venv/bin/python src/bot/telegram_bot.py
       "

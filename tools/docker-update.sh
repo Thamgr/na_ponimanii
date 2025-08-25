@@ -36,10 +36,12 @@ fi
 # Make sure env directory exists
 mkdir -p "$PROJECT_DIR/env"
 
-# Rebuild Docker image
-echo "Rebuilding Docker image..."
+# Rebuild Docker image with BuildKit
+echo "Rebuilding Docker image with BuildKit..."
 cd "$PROJECT_DIR"
-docker-compose build --no-cache
+DOCKER_BUILDKIT=1 docker-compose build --no-cache
+
+echo "Docker image rebuilt with Python virtual environment"
 
 # Start services
 echo "Starting services..."

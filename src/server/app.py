@@ -23,7 +23,7 @@ logger = setup_logging("SERVER")
 
 # Get StatsD configuration from environment variables or use defaults
 statsd_host = os.environ.get('STATSD_HOST', 'localhost')
-statsd_port = int(os.environ.get('STATSD_PORT', 8125))
+statsd_port = int(os.environ.get('STATSD_PORT', 9125))
 
 # Initialize StatsD client
 statsd_client = statsd.StatsClient(statsd_host, statsd_port, prefix='na_ponimanii')

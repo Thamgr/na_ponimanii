@@ -15,7 +15,7 @@ services:
       - API_HOST=0.0.0.0
       - PYTHONUNBUFFERED=1
       - STATSD_HOST=statsd-exporter
-      - STATSD_PORT=8125
+      - STATSD_PORT=9125
     ports:
       - "8000:8000"
     restart: unless-stopped

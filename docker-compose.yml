@@ -10,9 +10,12 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./env:/app/env
+      - ./config:/app/config
     environment:
       - API_HOST=0.0.0.0
       - PYTHONUNBUFFERED=1
+      - STATSD_HOST=statsd-exporter
+      - STATSD_PORT=8125
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -28,3 +31,31 @@ services:
         /app/venv/bin/python src/server/app.py &
         /app/venv/bin/python src/bot/telegram_bot.py
       "
+    depends_on:
+      - statsd-exporter
+
+  statsd-exporter:
+    image: prom/statsd-exporter:latest
+    container_name: na_ponimanii_statsd_exporter
+    command: --statsd.mapping-config=/etc/statsd-exporter/statsd_mapping.yml
+    volumes:
+      - ./config/statsd_mapping.yml:/etc/statsd-exporter/statsd_mapping.yml
+    ports:
+      - "8125:8125/udp"  # StatsD metrics intake
+      - "9102:9102"      # Prometheus metrics exposure
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: na_ponimanii_prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - statsd-exporter
+
+volumes:
+  prometheus_data:

@@ -3,6 +3,7 @@ import json
 import sys
 import os
 import time
+import statsd
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -20,12 +21,38 @@ from tools.logging_config import setup_logging, format_log_message
 # Set up component-specific logger
 logger = setup_logging("SERVER")
 
+# Get StatsD configuration from environment variables or use defaults
+statsd_host = os.environ.get('STATSD_HOST', 'localhost')
+statsd_port = int(os.environ.get('STATSD_PORT', 8125))
+
+# Initialize StatsD client
+statsd_client = statsd.StatsClient(statsd_host, statsd_port, prefix='na_ponimanii')
+logger.info(format_log_message(
+    "Initialized StatsD client",
+    host=statsd_host,
+    port=statsd_port
+))
+
 # Create FastAPI application
 app = FastAPI(
     title="Na Ponimanii API",
     description="API for Na Ponimanii Telegram Bot",
     version="0.1.0"
 )
+
+# Middleware to count requests
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    
+    # Increment request counter
+    statsd_client.incr(f'requests.{method}.{path}')
+    
+    # Call the next middleware or endpoint handler
+    response = await call_next(request)
+    
+    return response
 
 # Initialize database on startup
 @app.on_event("startup")

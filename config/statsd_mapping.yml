@@ -1,0 +1,9 @@
+mappings:
+  # Map StatsD metrics to Prometheus metrics
+  - match: "na_ponimanii.requests.*.*"
+    name: "na_ponimanii_http_requests_total"
+    labels:
+      method: "$1"
+      endpoint: "$2"
+    help: "Total number of HTTP requests"
+    type: "counter"

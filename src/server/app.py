@@ -15,9 +15,9 @@ from typing import List, Optional
 import asyncio
 from sqlalchemy import func
 
-from env.config import API_HOST, API_PORT, TOKEN
+from env.config import API_HOST, API_PORT, DEFAULT_USER_MODE
 from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic, get_db, Topic, User, add_user, get_mode, toggle_mode
-from src.server.llm_service import generate_explanation, generate_related_topics, LLMServiceException
+from src.server.llm_service import generate_explanation, generate_related_topics
 from tools.logging_config import setup_logging, format_log_message
 
 # Set up component-specific logger
@@ -208,7 +208,7 @@ async def change_mode(request: Request):
         ))
         raise HTTPException(status_code=500, detail=str(e))
 
-async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_topic_title: Optional[str] = None):
+async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_topic_title: Optional[str] = None, user_id: Optional[int] = None):
     """
     Background task to generate an explanation and related topics for a topic and save them to the database.
     
@@ -216,24 +216,37 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
         topic_id: The ID of the topic
         topic_title: The title of the topic
         parent_topic_title: The title of the parent topic, if available
+        user_id: The ID of the user, used to determine the explanation mode
     """
     logger.info(format_log_message(
         "Starting background task to generate explanation and related topics",
         topic_id=topic_id,
         topic_title=topic_title,
-        parent_topic_title=parent_topic_title
+        parent_topic_title=parent_topic_title,
+        user_id=user_id
     ))
     
     try:
+        # Get user's mode if user_id is provided
+        mode = DEFAULT_USER_MODE
+        if user_id is not None:
+            mode = get_mode(user_id)
+            logger.info(format_log_message(
+                "Retrieved user mode for explanation",
+                user_id=user_id,
+                mode=mode
+            ))
+        
         # Generate explanation
         logger.info(format_log_message(
             "Requesting explanation from LLM service",
             topic_id=topic_id,
             topic_title=topic_title,
-            parent_topic_title=parent_topic_title
+            parent_topic_title=parent_topic_title,
+            mode=mode
         ))
         
-        explanation = generate_explanation(topic_title, parent_topic_title)
+        explanation = generate_explanation(topic_title, parent_topic_title, mode)
 
         logger.info(format_log_message(
             "Requesting related topics from LLM service with explanation context",
@@ -368,6 +381,9 @@ async def bot_get_random_topic(request: Request):
                 
                 related_topics = generate_related_topics(topic.title, topic.explanation)
                 
+                # Note: We don't pass user_id here because the related topics format
+                # doesn't change based on the user's mode preference
+                
                 logger.info(format_log_message(
                     "Received related topics from LLM service",
                     topic_id=topic.id,
@@ -490,7 +506,8 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
             generate_and_save_explanation,
             topic_id=db_topic.id,
             topic_title=topic_title,
-            parent_topic_title=parent_topic_title
+            parent_topic_title=parent_topic_title,
+            user_id=user_id
         )
         
         # Return the topic data

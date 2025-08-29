@@ -24,9 +24,12 @@ from env.config import (
     LLM_TEMPERATURE,
     LLM_MAX_TOKENS,
     EXPLANATION_SYSTEM_PROMPT,
+    EXPLANATION_SYSTEM_PROMPT_LONG,
+    EXPLANATION_SYSTEM_PROMPT_SHORT,
     EXPLANATION_USER_PROMPT_TEMPLATE,
     RELATED_TOPICS_SYSTEM_PROMPT,
     RELATED_TOPICS_USER_PROMPT_TEMPLATE,
+    DEFAULT_USER_MODE,
 )
 from tools.logging_config import setup_logging, format_log_message
 
@@ -66,13 +69,14 @@ def get_llm_client() -> ChatOpenAI:
         ))
         raise LLMServiceException(f"Failed to initialize LLM client: {str(e)}")
 
-def generate_explanation(topic: str, parent_topic: Optional[str] = None) -> str:
+def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: Optional[str] = DEFAULT_USER_MODE) -> str:
     """
     Generate an explanation for a given topic using an external LLM.
     
     Args:
         topic (str): The topic to explain
         parent_topic (Optional[str]): The parent topic to provide context
+        mode (Optional[str]): The explanation mode ("short" or "long")
         
     Returns:
         str: The generated explanation
@@ -87,9 +91,17 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None) -> str:
         else:
             user_prompt = EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)
         
-        # Create messages for the LLM (system prompt contains all format instructions)
+        # Select the appropriate system prompt based on mode
+        system_prompt = EXPLANATION_SYSTEM_PROMPT  # Default prompt for backward compatibility
+        
+        # Choose the appropriate prompt based on the mode
+        if mode == "short":
+            system_prompt = EXPLANATION_SYSTEM_PROMPT_SHORT
+        else:  # "long" mode
+            system_prompt = EXPLANATION_SYSTEM_PROMPT_LONG
+        # Create messages for the LLM
         messages = [
-            SystemMessage(content=EXPLANATION_SYSTEM_PROMPT),
+            SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt)
         ]
         
@@ -130,7 +142,6 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None) -> str:
             ))
             
             return "Извините, не удалось сгенерировать объяснение. Попробуйте позже."
-
     
     except Exception as e:
         logger.error(format_log_message(
@@ -208,7 +219,6 @@ def generate_related_topics(topic: str, explanation: Optional[str] = None) -> Li
             ))
             
             return []
-
     
     except Exception as e:
         logger.error(format_log_message(

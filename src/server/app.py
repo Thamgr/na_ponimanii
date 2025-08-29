@@ -16,7 +16,7 @@ import asyncio
 from sqlalchemy import func
 
 from env.config import API_HOST, API_PORT, TOKEN
-from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic, get_db, Topic
+from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic, get_db, Topic, User, add_user, get_mode, toggle_mode
 from src.server.llm_service import generate_explanation, generate_related_topics, LLMServiceException
 from tools.logging_config import setup_logging, format_log_message
 
@@ -99,21 +99,20 @@ async def periodic_metrics_update():
             await asyncio.sleep(60)
 
 def update_metrics():
-    """Update application metrics including unique user count."""
+    """Update application metrics including unique user count and users table count."""
     try:
         # Get a database session
         db = get_db()
         
-        # Count unique user_ids in the database
-        unique_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
+        # Count unique user_ids in the topics table
+        active_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
         
-        # Send the metric to StatsD
-        statsd_client.gauge('users.unique_count', unique_users_count)
+        # Count records in the users table
+        users_unique_count = db.query(func.count(User.user_id)).scalar()
         
-        logger.info(format_log_message(
-            "Updated unique users count metric",
-            unique_users_count=unique_users_count
-        ))
+        # Send the metrics to StatsD
+        statsd_client.gauge('users.active_count', active_users_count)
+        statsd_client.gauge('users.unique_count', users_unique_count)
     except Exception as e:
         logger.error(format_log_message(
             "Error updating metrics",
@@ -129,6 +128,16 @@ class TopicCreate(BaseModel):
     """Request model for creating a topic."""
     user_id: int
     title: str
+
+class UserModeRequest(BaseModel):
+    """Request model for user mode operations."""
+    user_id: int
+
+class UserModeResponse(BaseModel):
+    """Response model for user mode operations."""
+    user_id: int
+    mode: str
+
 class TopicResponse(BaseModel):
     """Response model for a topic."""
     id: int
@@ -158,6 +167,46 @@ async def http_exception_handler(request, exc):
 async def root():
     """Root endpoint for health check."""
     return {"status": "running"}
+
+@app.post("/change_mode", response_model=UserModeResponse)
+async def change_mode(request: Request):
+    """
+    Toggle the mode for a user between "short" and "long".
+    
+    Args:
+        request: The request containing the user ID
+        
+    Returns:
+        The user ID and new mode
+    """
+    logger.info(format_log_message(
+        "Received change_mode request",
+        client_host=request.client.host,
+        method=request.method
+    ))
+    
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        # Validate required fields
+        if 'user_id' not in data:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        user_id = data['user_id']
+        
+        # Toggle the user's mode
+        new_mode = toggle_mode(user_id)
+        
+        # Return the user ID and new mode
+        return {"user_id": user_id, "mode": new_mode}
+
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing change_mode request",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_topic_title: Optional[str] = None):
     """
@@ -254,6 +303,9 @@ async def bot_get_random_topic(request: Request):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         user_id = data['user_id']
+        
+        # Ensure user exists in the database
+        add_user(user_id)
         
         logger.info(format_log_message(
             "Getting random topic for user",
@@ -403,6 +455,9 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         topic_title = data['topic_title']
         parent_topic_title = data.get('parent_topic_title')  # Optional parent topic title
         
+        # Ensure user exists in the database
+        add_user(user_id)
+        
         logger.info(format_log_message(
             "Processing add_topic request",
             user_id=user_id,
@@ -506,6 +561,9 @@ async def bot_list_topics(request: Request):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         user_id = data['user_id']
+        
+        # Ensure user exists in the database
+        add_user(user_id)
         
         logger.info(format_log_message(
             "Retrieving topics for user",

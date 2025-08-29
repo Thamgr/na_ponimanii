@@ -28,6 +28,27 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+class User(Base):
+    """
+    SQLAlchemy model for the users table.
+    
+    Columns:
+        user_id (int): Primary key, ID of the user
+        mode (str): User's preference mode ("short" or "long")
+    """
+    __tablename__ = "users"
+    
+    user_id = Column(Integer, primary_key=True, index=True)
+    mode = Column(String, default="long")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the model instance to a dictionary."""
+        return {
+            "user_id": self.user_id,
+            "mode": self.mode
+        }
+
+
 class Topic(Base):
     """
     SQLAlchemy model for the topics table.
@@ -414,6 +435,123 @@ def list_topics(user_id: int) -> List[Dict[str, Any]]:
         raise
     finally:
         db.close()
+
+
+def add_user(user_id: int, mode: str = "long") -> User:
+    """
+    Add a new user to the database or update existing user's mode.
+    
+    Args:
+        user_id (int): ID of the user
+        mode (str): User's preference mode ("short" or "long"), defaults to "long"
+    
+    Returns:
+        User: The created or updated user
+    """
+    logger.info(format_log_message(
+        "Adding or updating user in database",
+        user_id=user_id,
+        mode=mode
+    ))
+    
+    db = get_db()
+    try:
+        # Check if user already exists
+        user = db.query(User).filter(User.user_id == user_id).first()
+        
+        if user:
+            # Update existing user
+            user.mode = mode
+            logger.info(format_log_message(
+                "Updating existing user",
+                user_id=user_id,
+                mode=mode
+            ))
+        else:
+            # Create a new User instance
+            user = User(user_id=user_id, mode=mode)
+            db.add(user)
+            logger.info(format_log_message(
+                "Creating new user",
+                user_id=user_id,
+                mode=mode
+            ))
+        
+        # Commit changes
+        db.commit()
+        db.refresh(user)
+        
+        logger.info(format_log_message(
+            "User added/updated successfully",
+            user_id=user_id,
+            mode=user.mode
+        ))
+        
+        return user
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error adding/updating user in database",
+            user_id=user_id,
+            mode=mode,
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise
+    finally:
+        db.close()
+
+def get_mode(user_id: int) -> str:
+    """
+    Get the mode for a specific user.
+    
+    Args:
+        user_id (int): ID of the user
+    
+    Returns:
+        str: The user's mode ("short" or "long"), defaults to "long" if user not found
+    """
+    
+    db = get_db()
+    try:
+        # Find the user
+        user = db.query(User).filter(User.user_id == user_id).first()
+        
+        if user:
+            return user.mode
+        else:
+            return "long"
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error getting user mode",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        # Return default mode in case of error
+        return "long"
+    finally:
+        db.close()
+
+def toggle_mode(user_id: int) -> str:
+    """
+    Toggle the mode for a specific user between "short" and "long".
+    
+    Args:
+        user_id (int): ID of the user
+    
+    Returns:
+        str: The new mode after toggling
+    """
+    # Get current mode
+    current_mode = get_mode(user_id)
+    
+    # Toggle mode
+    new_mode = "short" if current_mode == "long" else "long"
+    
+    # Update user with new mode
+    add_user(user_id, new_mode)
+    
+    return new_mode
 
 
 # If this file is run directly, initialize the database

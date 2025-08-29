@@ -634,6 +634,81 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(BOT_CONNECTION_ERROR)
 
 
+# Define a function to handle the /change_mode command
+@thinking_decorator
+async def change_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /change_mode command to toggle between short and long modes."""
+    # Get the user ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    logger.info(format_log_message(
+        "Received /change_mode command",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username
+    ))
+    
+    # Prepare the data to send to the FastAPI server
+    data = {
+        "user_id": user_id
+    }
+    
+    # Send the request to the FastAPI server
+    try:
+        change_mode_url = f"http://{API_HOST}:{API_PORT}/change_mode"
+        
+        logger.info(format_log_message(
+            "Sending change_mode request to server",
+            url=change_mode_url,
+            method="POST",
+            payload=data
+        ))
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(change_mode_url, json=data)
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                new_mode = response_data.get('mode', 'unknown')
+                
+                logger.info(format_log_message(
+                    "Mode changed successfully",
+                    user_id=user_id,
+                    new_mode=new_mode
+                ))
+                
+                # Format and send message to the user
+                message = f"Your mode has been changed to: {new_mode}"
+                await update.message.reply_text(message)
+                
+                # Create keyboard with two buttons
+                reply_markup = create_keyboard()
+                
+                # Show the keyboard again
+                await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
+            else:
+                error_text = response.text
+                logger.error(format_log_message(
+                    "Error response from server when changing mode",
+                    status_code=response.status_code,
+                    error=error_text,
+                    user_id=user_id
+                ))
+                
+                await update.message.reply_text("Failed to change mode. Please try again later.")
+    
+    except Exception as e:
+        logger.error(format_log_message(
+            "Failed to send change_mode request to server",
+            error=str(e),
+            user_id=user_id
+        ))
+        
+        await update.message.reply_text(BOT_CONNECTION_ERROR)
+
+
 # Helper function to send delete_topic request to the server
 async def send_delete_topic_request(topic_id: int) -> bool:
     """
@@ -859,6 +934,7 @@ def main() -> None:
     ))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
+    application.add_handler(CommandHandler("change_mode", change_mode_command))
     application.add_handler(CallbackQueryHandler(button_callback))
     
     

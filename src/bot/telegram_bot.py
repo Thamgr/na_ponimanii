@@ -33,9 +33,16 @@ logger = setup_logging("BOT")
 # Define conversation states
 WAITING_FOR_TOPIC = 1
 
-# Global map to store parent topic data
-# Key: related_topic, Value: parent_topic_title
+# Global maps to store topic data
+# Map for parent topics - Key: related_topic, Value: parent_topic_title
 parent_topic_map = {}
+
+# Map for related topics - Key: topic_id, Value: related_topic
+# This helps keep callback_data short
+related_topic_map = {}
+
+# Counter for generating unique IDs for related topics
+related_topic_counter = 0
 
 
 # Decorator for handlers to show and remove "Thinking..." message
@@ -544,19 +551,30 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     if related_topics:
                         # Create keyboard with buttons for each related topic
                         keyboard = []
+                        # Get a global reference to the counter
+                        global related_topic_counter
+                        
                         for related_topic in related_topics:
                             # Store the parent topic in the global map
                             parent_topic_map[related_topic] = title
                             
-                            # Create a simple callback data with just the topic
-                            callback_data = f"add_{related_topic}"
+                            # Generate a unique ID for this related topic
+                            topic_id = related_topic_counter
+                            related_topic_counter += 1
+                            
+                            # Store the related topic in the map with its ID
+                            related_topic_map[topic_id] = related_topic
+                            
+                            # Create a short callback data with just the ID
+                            callback_data = f"add_{topic_id}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data
                             )])
                             
                             logger.info(format_log_message(
-                                "Stored parent topic in map",
+                                "Stored topic in maps",
+                                topic_id=topic_id,
                                 related_topic=related_topic,
                                 parent_topic=title
                             ))
@@ -796,14 +814,37 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Check if it's an add topic callback
     if callback_data.startswith("add_"):
         try:
-            # Extract the topic
-            topic = callback_data[4:]
+            # Extract the topic ID
+            topic_id_str = callback_data[4:]
+            
+            try:
+                topic_id = int(topic_id_str)
+            except ValueError:
+                logger.error(format_log_message(
+                    "Invalid topic ID in callback data",
+                    callback_data=callback_data,
+                    topic_id_str=topic_id_str
+                ))
+                await query.answer("Invalid topic ID")
+                return
+            
+            # Get the topic from the related topics map
+            topic = related_topic_map.get(topic_id)
+            
+            if not topic:
+                logger.error(format_log_message(
+                    "Topic ID not found in related topics map",
+                    topic_id=topic_id
+                ))
+                await query.answer("Topic not found")
+                return
             
             # Get the parent topic from the global map
             parent_topic_title = parent_topic_map.get(topic)
             
             logger.info(format_log_message(
-                "Retrieved parent topic from map",
+                "Retrieved topic from maps",
+                topic_id=topic_id,
                 topic=topic,
                 parent_topic_title=parent_topic_title
             ))
@@ -821,13 +862,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
         # Answer the callback query with a notification
         if success and topic:
-            # Clean up the global map
+            # Clean up the global maps
             if topic in parent_topic_map:
                 logger.info(format_log_message(
                     "Removing topic from parent map",
                     topic=topic
                 ))
                 del parent_topic_map[topic]
+            
+            if topic_id in related_topic_map:
+                logger.info(format_log_message(
+                    "Removing topic from related topics map",
+                    topic_id=topic_id,
+                    topic=topic
+                ))
+                del related_topic_map[topic_id]
             
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
         else:
@@ -869,21 +918,24 @@ async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_
         ))
 
 
-# Function to clean up the parent topic map
-async def cleanup_parent_topic_map(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Periodically clean up the parent topic map to avoid memory leaks."""
-    global parent_topic_map
+# Function to clean up the topic maps
+async def cleanup_topic_maps(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Periodically clean up the topic maps to avoid memory leaks."""
+    global parent_topic_map, related_topic_map, related_topic_counter
     
     logger.info(format_log_message(
-        "Cleaning up parent topic map",
-        map_size=len(parent_topic_map)
+        "Cleaning up topic maps",
+        parent_map_size=len(parent_topic_map),
+        related_map_size=len(related_topic_map)
     ))
     
-    # Clear the map
+    # Clear the maps
     parent_topic_map = {}
+    related_topic_map = {}
+    related_topic_counter = 0
     
     logger.info(format_log_message(
-        "Parent topic map cleaned up"
+        "Topic maps cleaned up"
     ))
 
 # Main function to run the bot
@@ -943,7 +995,7 @@ def main() -> None:
     try:
         job_queue = application.job_queue
         if job_queue:
-            job_queue.run_repeating(cleanup_parent_topic_map, interval=3600, first=3600)
+            job_queue.run_repeating(cleanup_topic_maps, interval=3600, first=3600)
             logger.info(format_log_message(
                 "Handlers registered, cleanup job scheduled, starting polling"
             ))

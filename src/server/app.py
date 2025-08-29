@@ -12,9 +12,11 @@ from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
+import asyncio
+from sqlalchemy import func
 
 from env.config import API_HOST, API_PORT, TOKEN
-from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic
+from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic, get_db, Topic
 from src.server.llm_service import generate_explanation, generate_related_topics, LLMServiceException
 from tools.logging_config import setup_logging, format_log_message
 
@@ -54,10 +56,10 @@ async def metrics_middleware(request: Request, call_next):
     
     return response
 
-# Initialize database on startup
+# Initialize database on startup and set up metrics
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the database on application startup."""
+    """Initialize the database on application startup and set up metrics."""
     logger.info(format_log_message(
         "Initializing database"
     ))
@@ -67,6 +69,60 @@ async def startup_event():
     logger.info(format_log_message(
         "Database initialized successfully"
     ))
+    
+    # Set up initial metrics collection
+    update_metrics()
+    
+    # Start background task for periodic metrics updates
+    asyncio.create_task(periodic_metrics_update())
+    
+async def periodic_metrics_update():
+    """Periodically update metrics in the background."""
+    logger.info(format_log_message(
+        "Starting periodic metrics update task"
+    ))
+    
+    while True:
+        try:
+            # Update metrics
+            update_metrics()
+            
+            # Wait for 5 minutes before updating again
+            await asyncio.sleep(60)
+        except Exception as e:
+            logger.error(format_log_message(
+                "Error in periodic metrics update task",
+                error=str(e),
+                error_type=type(e).__name__
+            ))
+            # Wait a bit before trying again
+            await asyncio.sleep(60)
+
+def update_metrics():
+    """Update application metrics including unique user count."""
+    try:
+        # Get a database session
+        db = get_db()
+        
+        # Count unique user_ids in the database
+        unique_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
+        
+        # Send the metric to StatsD
+        statsd_client.gauge('users.unique_count', unique_users_count)
+        
+        logger.info(format_log_message(
+            "Updated unique users count metric",
+            unique_users_count=unique_users_count
+        ))
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error updating metrics",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+    finally:
+        if 'db' in locals():
+            db.close()
 
 # Define request and response models
 class TopicCreate(BaseModel):
@@ -371,6 +427,9 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         ))
         
         db_topic = add_topic(user_id, topic_title, parent_topic_title=parent_topic_title)
+        
+        # Update metrics after adding a new topic (might be a new user)
+        update_metrics()
         
         background_tasks.add_task(
             generate_and_save_explanation,

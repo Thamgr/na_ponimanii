@@ -104,6 +104,9 @@ def update_metrics():
         # Get a database session
         db = get_db()
         
+        # Count rows in the topics table
+        topics_row_count = db.query(func.count(Topic.user_id)).scalar()
+        
         # Count unique user_ids in the topics table
         active_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
         
@@ -113,6 +116,7 @@ def update_metrics():
         # Send the metrics to StatsD
         statsd_client.gauge('users.active_count', active_users_count)
         statsd_client.gauge('users.unique_count', users_unique_count)
+        statsd_client.gauge('topics.count', topics_row_count)
     except Exception as e:
         logger.error(format_log_message(
             "Error updating metrics",

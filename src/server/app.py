@@ -286,14 +286,6 @@ async def bot_get_random_topic(request: Request):
             parent_topic_title=topic.parent_topic_title
         )
         
-        # Delete the topic
-        logger.info(format_log_message(
-            "Deleting topic after retrieval",
-            topic_id=topic.id
-        ))
-        
-        delete_topic(topic.id)
-        
         logger.info(format_log_message(
             "Random topic request completed successfully",
             user_id=user_id,
@@ -491,6 +483,67 @@ async def bot_list_topics(request: Request):
     except Exception as e:
         logger.error(format_log_message(
             "Error processing list_topics request",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/bot/delete_topic")
+async def bot_delete_topic(request: Request):
+    """
+    Endpoint for the Telegram bot to delete a topic.
+    
+    Args:
+        request: The request containing the topic ID
+        
+    Returns:
+        A success message or an error response
+    """
+    logger.info(format_log_message(
+        "Received delete_topic request",
+        client_host=request.client.host,
+        method=request.method
+    ))
+    
+    try:
+        # Parse request body as JSON
+        data = await request.json()
+        
+        logger.debug(format_log_message(
+            "Parsed delete_topic request body",
+            data=data
+        ))
+        
+        # Validate required fields
+        if 'topic_id' not in data:
+            logger.warning(format_log_message(
+                "Missing topic_id in delete_topic request",
+                data=data
+            ))
+            raise HTTPException(status_code=400, detail="topic_id is required")
+        
+        topic_id = data['topic_id']
+        
+        # Delete the topic
+        success = delete_topic(topic_id)
+        
+        if not success:
+            logger.warning(format_log_message(
+                "Topic not found or could not be deleted",
+                topic_id=topic_id
+            ))
+            raise HTTPException(status_code=404, detail="Topic not found or could not be deleted")
+        
+        logger.info(format_log_message(
+            "Delete_topic request completed successfully",
+            topic_id=topic_id
+        ))
+        
+        return {"status": "success", "message": "Topic deleted successfully"}
+
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error processing delete_topic request",
             error=str(e),
             error_type=type(e).__name__
         ))

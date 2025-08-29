@@ -448,7 +448,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Define a function to handle the /topic command
 @thinking_decorator
 async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle the /topic command to get a random topic explanation and remove it."""
+    """Handle the /topic command to get a random topic explanation and then delete it."""
     # Get the user ID
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -527,6 +527,9 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     has_explanation=topic_data.get('explanation') is not None
                 ))
                 
+                # Get the topic ID for later deletion
+                topic_id = topic_data.get('id')
+                
                 # Format and send message to the user
                 title = topic_data['title']
                 explanation = topic_data.get('explanation')
@@ -593,6 +596,22 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     
                     # Show the keyboard again
                     await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
+                
+                # Delete the topic after displaying it
+                if topic_id:
+                    logger.info(format_log_message(
+                        "Deleting topic after displaying",
+                        topic_id=topic_id
+                    ))
+                    
+                    success = await send_delete_topic_request(topic_id)
+                    
+                    if not success:
+                        logger.warning(format_log_message(
+                            "Failed to delete topic after displaying",
+                            topic_id=topic_id
+                        ))
+                        # Continue even if deletion fails - this is not critical for the user experience
 
             else:
                 error_text = response.text
@@ -613,6 +632,64 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ))
         
         await update.message.reply_text(BOT_CONNECTION_ERROR)
+
+
+# Helper function to send delete_topic request to the server
+async def send_delete_topic_request(topic_id: int) -> bool:
+    """
+    Send a request to the server to delete a topic.
+    
+    Args:
+        topic_id: The ID of the topic to delete
+        
+    Returns:
+        bool: True if the topic was deleted successfully, False otherwise
+    """
+    # Prepare the data to send to the FastAPI server
+    data = {
+        "topic_id": topic_id
+    }
+    
+    # Send the request to the FastAPI server
+    try:
+        delete_topic_url = f"http://{API_HOST}:{API_PORT}/bot/delete_topic"
+        
+        logger.info(format_log_message(
+            "Sending delete_topic request to server",
+            url=delete_topic_url,
+            method="POST",
+            payload=data,
+            topic_id=topic_id
+        ))
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(delete_topic_url, json=data)
+            
+            if response.status_code == 200:
+                logger.info(format_log_message(
+                    "Topic deleted successfully",
+                    topic_id=topic_id
+                ))
+                
+                return True
+            else:
+                error_text = response.text
+                logger.error(format_log_message(
+                    "Error response from server when deleting topic",
+                    status_code=response.status_code,
+                    error=error_text,
+                    topic_id=topic_id
+                ))
+                
+                return False
+    except Exception as e:
+        logger.error(format_log_message(
+            "Failed to send delete_topic request to server",
+            error=str(e),
+            topic_id=topic_id
+        ))
+        
+        return False
 
 
 # Define a function to handle button clicks

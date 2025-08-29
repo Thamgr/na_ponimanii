@@ -16,6 +16,7 @@ services:
       - PYTHONUNBUFFERED=1
       - STATSD_HOST=statsd-exporter
       - STATSD_PORT=9125
+      - DB_PATH=/app/data/data.db
     ports:
       - "8000:8000"
     restart: unless-stopped

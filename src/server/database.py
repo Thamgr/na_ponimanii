@@ -22,7 +22,7 @@ logger = setup_logging("DB")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 # Create sessionmaker
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=True, bind=engine)
 
 # Create Base class
 Base = declarative_base()

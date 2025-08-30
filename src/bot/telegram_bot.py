@@ -559,14 +559,14 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                             parent_topic_map[related_topic] = title
                             
                             # Generate a unique ID for this related topic
-                            topic_id = related_topic_counter
+                            related_topic_id = related_topic_counter
                             related_topic_counter += 1
                             
                             # Store the related topic in the map with its ID
-                            related_topic_map[topic_id] = related_topic
+                            related_topic_map[related_topic_id] = related_topic
                             
                             # Create a short callback data with just the ID
-                            callback_data = f"add_{topic_id}"
+                            callback_data = f"add_{related_topic_id}"
                             keyboard.append([InlineKeyboardButton(
                                 related_topic,
                                 callback_data=callback_data

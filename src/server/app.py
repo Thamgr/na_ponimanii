@@ -15,7 +15,7 @@ from typing import List, Optional
 import asyncio
 
 from env.config import API_HOST, API_PORT, DEFAULT_USER_MODE
-from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, update_db_metrics, get_random_topic_for_user, delete_topic, Topic, User, add_user, get_mode, toggle_mode
+from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, update_db_metrics, get_random_topic_for_user, delete_topic, Topic, User, add_user
 from src.server.llm_service import generate_explanation, generate_related_topics
 from tools.logging_config import setup_logging, format_log_message
 
@@ -132,45 +132,6 @@ async def root():
     """Root endpoint for health check."""
     return {"status": "running"}
 
-@app.post("/change_mode", response_model=UserModeResponse)
-async def change_mode(request: Request):
-    """
-    Toggle the mode for a user between "short" and "long".
-    
-    Args:
-        request: The request containing the user ID
-        
-    Returns:
-        The user ID and new mode
-    """
-    logger.info(format_log_message(
-        "Received change_mode request",
-        client_host=request.client.host,
-        method=request.method
-    ))
-    
-    try:
-        # Parse request body as JSON
-        data = await request.json()
-        # Validate required fields
-        if 'user_id' not in data:
-            raise HTTPException(status_code=400, detail="user_id is required")
-        
-        user_id = data['user_id']
-        
-        # Toggle the user's mode
-        new_mode = toggle_mode(user_id)
-        
-        # Return the user ID and new mode
-        return {"user_id": user_id, "mode": new_mode}
-
-    except Exception as e:
-        logger.error(format_log_message(
-            "Error processing change_mode request",
-            error=str(e),
-            error_type=type(e).__name__
-        ))
-        raise HTTPException(status_code=500, detail=str(e))
 
 async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_topic_title: Optional[str] = None, user_id: Optional[int] = None):
     """
@@ -189,24 +150,14 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
     ))
     
     try:
-        # Get user's mode if user_id is provided
-        mode = DEFAULT_USER_MODE
-        if user_id is not None:
-            mode = get_mode(user_id)
-            logger.info(format_log_message(
-                "Retrieved user mode for explanation",
-                user_id=user_id,
-                mode=mode
-            ))
         
         # Generate explanation
         logger.info(format_log_message(
             "Requesting explanation from LLM service",
-            topic_id=topic_id,
-            mode=mode
+            topic_id=topic_id
         ))
         
-        explanation = generate_explanation(topic_title, parent_topic_title, mode)
+        explanation = generate_explanation(topic_title, parent_topic_title)
 
         logger.info(format_log_message(
             "Requesting related topics from LLM service with explanation context",

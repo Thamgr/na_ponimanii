@@ -17,14 +17,14 @@ from telegram.ext import (
 from env.config import (
     TOKEN, API_HOST, API_PORT,
     BOT_WELCOME_MESSAGE, BOT_EMPTY_TOPIC_ERROR, BOT_TOPIC_ADDED_SUCCESS,
-    BOT_TOPIC_ADDED_ERROR, BOT_CONNECTION_ERROR, BOT_TOPIC_PROMPT,
-    BOT_TOPIC_PROMPT_AGAIN, BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
+    BOT_TOPIC_ADDED_ERROR, BOT_CONNECTION_ERROR, BOT_NO_TOPICS, BOT_TOPICS_LIST_HEADER,
     BOT_TOPICS_LIST_ERROR, BOT_NO_TOPICS_FOR_EXPLANATION, BOT_TOPIC_EXPLANATION,
     BOT_RELATED_TOPICS_PROMPT, BOT_NO_EXPLANATION, BOT_TOPIC_ERROR,
     BOT_TOPIC_ADDED_FROM_CALLBACK, BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR,
     BOT_UNKNOWN_COMMAND, BOT_KEYBOARD_ADD_TOPIC, BOT_KEYBOARD_STUDY_TOPIC,
-    BOT_KEYBOARD_WHAT_NEXT, BOT_THINKING_MESSAGE
+    BOT_KEYBOARD_WHAT_NEXT, BOT_THINKING_MESSAGE, BOT_TOPIC_LENGTH_ERROR
 )
+
 from tools.logging_config import setup_logging, format_log_message
 from metrics.metrics import get_metrics_client
 
@@ -92,14 +92,14 @@ def thinking_decorator(handler_func):
 # Helper function to create keyboards
 def create_keyboard():
     """
-    Create a keyboard with both default buttons.
+    Create a keyboard with the study topic button.
     
     Returns:
-        ReplyKeyboardMarkup: The keyboard markup with both buttons
+        ReplyKeyboardMarkup: The keyboard markup with the study button
     """
-    # Always include both buttons
+    # Only include the study topic button
     keyboard = [
-        [KeyboardButton(BOT_KEYBOARD_ADD_TOPIC), KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
+        [KeyboardButton(BOT_KEYBOARD_STUDY_TOPIC)]
     ]
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -242,115 +242,10 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
             chat_id=chat_id,
             text=BOT_TOPIC_ADDED_ERROR
         )
+        get_metrics_client().incr(f'responses.{500}.None.add_topic')
         
         return False
 
-# Define a function to handle the /add command
-@thinking_decorator
-async def add_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle the /add command to start the topic addition process."""
-    # Get the user ID and chat ID
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    logger.info(format_log_message(
-        "Received /add command",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username
-    ))
-    
-    # Prompt the user for a topic
-    await update.message.reply_text(BOT_TOPIC_PROMPT)
-    
-    logger.info(format_log_message(
-        "Sent topic prompt to user",
-        user_id=user_id,
-        chat_id=chat_id
-    ))
-    
-    # Return the state to indicate we're waiting for a topic
-    return WAITING_FOR_TOPIC
-
-# Define a function to handle the topic response
-@thinking_decorator
-async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle the user's response with the topic."""
-    # Get the user ID and chat ID
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    # Get the topic from the message
-    topic_title = update.message.text.strip()
-    
-    logger.info(format_log_message(
-        "Received topic from user",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username,
-    ))
-    
-    # Add the topic (no parent topic for topics added directly by the user)
-    success = await add_topic(user_id, topic_title, chat_id, context, parent_topic_title=None)
-    
-    # Create keyboard with two buttons
-    reply_markup = create_keyboard()
-    
-    # If the topic was added successfully, show the keyboard again
-    if success:
-        await update.message.reply_text(
-            BOT_KEYBOARD_WHAT_NEXT,
-            reply_markup=reply_markup
-        )
-    
-    # End the conversation
-    return ConversationHandler.END
-
-# Define a function to handle the case when a user presses the add topic button while in the waiting for topic state
-@thinking_decorator
-async def handle_add_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle the case when a user presses the add topic button while in the waiting for topic state."""
-    # Get the user ID and chat ID
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    logger.info(format_log_message(
-        "Received add topic button press while in waiting for topic state",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username
-    ))
-    
-    # Prompt the user for a topic again
-    await update.message.reply_text(BOT_TOPIC_PROMPT_AGAIN)
-    
-    # Stay in the conversation
-    return WAITING_FOR_TOPIC
-
-# Define a function to handle the case when a user presses the study topic button while in the waiting for topic state
-@thinking_decorator
-async def handle_study_topic_in_waiting_state(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle the case when a user presses the study topic button while in the waiting for topic state."""
-    # Get the user ID and chat ID
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    logger.info(format_log_message(
-        "Received study topic button press while in waiting for topic state",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username
-    ))
-    
-    # End the conversation
-    await get_topic_command(update, context)
-    
-    # End the conversation
-    return ConversationHandler.END
 
 # Define a function to handle the /list command
 @thinking_decorator
@@ -781,6 +676,57 @@ async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_
         ))
 
 
+# Define a function to handle direct messages as topics
+@thinking_decorator
+async def handle_direct_message_as_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle any direct message as a topic to add."""
+    # Get the user ID and chat ID
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or "Unknown"
+    
+    # Get the topic from the message
+    topic_title = update.message.text.strip()
+    
+    logger.info(format_log_message(
+        "Received direct message as topic",
+        user_id=user_id,
+        chat_id=chat_id,
+        username=username,
+    ))
+    
+    # Check if topic length is valid (between 3 and 30 characters)
+    if len(topic_title) < 3 or len(topic_title) > 30:
+        logger.info(format_log_message(
+            "Invalid topic length",
+            user_id=user_id,
+            chat_id=chat_id,
+            topic_length=len(topic_title)
+        ))
+        
+        # Create keyboard with study topic button
+        reply_markup = create_keyboard()
+        
+        # Send error message
+        await update.message.reply_text(
+            BOT_TOPIC_LENGTH_ERROR,
+            reply_markup=reply_markup
+        )
+        return
+    
+    # Add the topic (no parent topic for topics added directly by the user)
+    success = await add_topic(user_id, topic_title, chat_id, context, parent_topic_title=None)
+    
+    # Create keyboard with study topic button
+    reply_markup = create_keyboard()
+    
+    # If the topic was added successfully, show the keyboard again
+    if success:
+        await update.message.reply_text(
+            BOT_KEYBOARD_WHAT_NEXT,
+            reply_markup=reply_markup
+        )
+
 # Function to clean up the topic maps
 async def cleanup_topic_maps(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Periodically clean up the topic maps to avoid memory leaks."""
@@ -813,39 +759,18 @@ def main() -> None:
     # Create the Application and pass it your bot's token from config.py
     application = Application.builder().token(TOKEN).build()
 
-    # Create conversation handler for adding topics
-    add_topic_conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("add", add_topic_command),
-            MessageHandler(filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"), add_topic_command)
-        ],
-        states={
-            WAITING_FOR_TOPIC: [
-                MessageHandler(
-                    filters.Regex(f"^{BOT_KEYBOARD_ADD_TOPIC}$"),
-                    handle_add_topic_in_waiting_state
-                ),
-                MessageHandler(
-                    filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
-                    handle_study_topic_in_waiting_state
-                ),
-                MessageHandler(
-                    filters.TEXT &
-                    ~filters.COMMAND,  # Exclude all commands
-                    receive_topic
-                )
-            ]
-        },
-        fallbacks=[MessageHandler(filters.COMMAND, lambda update, context: ConversationHandler.END)]
-    )
-
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     # Add handler for keyboard buttons
-    application.add_handler(add_topic_conv_handler)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
         handle_keyboard_buttons
+    ))
+    # Add handler for any text message that isn't a command or the study topic button
+    # This will treat any regular message as a topic to add
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & ~filters.Regex(f"^{BOT_KEYBOARD_STUDY_TOPIC}$"),
+        handle_direct_message_as_topic
     ))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))

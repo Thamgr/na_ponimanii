@@ -81,8 +81,7 @@ BOT_TOPIC_ADDED_ERROR = 'Произошла ошибка при добавлен
 BOT_CONNECTION_ERROR = 'Не удалось связаться с сервером. Попробуйте позже.'
 
 # Add topic command
-BOT_TOPIC_PROMPT = 'Пожалуйста, отправьте тему, которую вы хотите добавить:'
-BOT_TOPIC_PROMPT_AGAIN = 'Пожалуйста, введите тему для добавления.'
+BOT_TOPIC_LENGTH_ERROR = 'Тема должна быть от 3 до 30 символов.'
 
 # Thinking message
 BOT_THINKING_MESSAGE = 'Размышляю...'

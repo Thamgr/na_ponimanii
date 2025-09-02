@@ -302,11 +302,11 @@ async def bot_get_random_topic(request: Request):
         
         # Generate explanation if not already present
         if not topic.explanation:
-            time.sleep(3)
             logger.warning(format_log_message(
                 "Explanation was not ready - wait another 3s",
                 topic_id=topic.id
             ))
+            time.sleep(3)
         
         # Get related topics from the database or generate them if not available
         related_topics = []

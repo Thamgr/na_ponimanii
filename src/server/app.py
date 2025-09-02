@@ -54,6 +54,9 @@ async def metrics_middleware(request: Request, call_next):
     # Call the next middleware or endpoint handler
     response = await call_next(request)
     
+    # Track responses with status codes
+    statsd_client.incr(f'responses.{response.status_code}.{method}.{path}')
+    
     return response
 
 # Initialize database on startup and set up metrics

@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
+from metrics.metrics import get_metrics_client
+
 from env.config import DATABASE_URL
 from tools.logging_config import setup_logging, format_log_message
 
@@ -544,6 +546,36 @@ def toggle_mode(user_id: int) -> str:
     add_user(user_id, new_mode)
     
     return new_mode
+
+
+def update_db_metrics():
+    """Update application metrics including unique user count and users table count."""
+    try:
+        # Get a database session
+        db = get_db()
+        
+        # Count rows in the topics table
+        topics_row_count = db.query(func.count(Topic.user_id)).scalar()
+        
+        # Count unique user_ids in the topics table
+        active_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
+        
+        # Count records in the users table
+        users_unique_count = db.query(func.count(User.user_id)).scalar()
+        
+        # Send the metrics to StatsD
+        get_metrics_client().gauge('users.active_count', active_users_count)
+        get_metrics_client().gauge('users.unique_count', users_unique_count)
+        get_metrics_client().gauge('topics.count', topics_row_count)
+    except Exception as e:
+        logger.error(format_log_message(
+            "Error updating metrics",
+            error=str(e),
+            error_type=type(e).__name__
+        ))
+    finally:
+        if 'db' in locals():
+            db.close()
 
 
 # If this file is run directly, initialize the database

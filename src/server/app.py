@@ -3,12 +3,12 @@ import json
 import sys
 import os
 import time
-import statsd
 
 # Add parent directory to path to allow imports from other modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks
+from metrics.metrics import get_metrics_client
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -16,24 +16,13 @@ import asyncio
 from sqlalchemy import func
 
 from env.config import API_HOST, API_PORT, DEFAULT_USER_MODE
-from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, get_topic, get_random_topic_for_user, delete_topic, get_db, Topic, User, add_user, get_mode, toggle_mode
+from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, update_db_metrics, get_random_topic_for_user, delete_topic, Topic, User, add_user, get_mode, toggle_mode
 from src.server.llm_service import generate_explanation, generate_related_topics
 from tools.logging_config import setup_logging, format_log_message
 
 # Set up component-specific logger
 logger = setup_logging("SERVER")
 
-# Get StatsD configuration from environment variables or use defaults
-statsd_host = os.environ.get('STATSD_HOST', 'localhost')
-statsd_port = int(os.environ.get('STATSD_PORT', 9125))
-
-# Initialize StatsD client
-statsd_client = statsd.StatsClient(statsd_host, statsd_port, prefix='na_ponimanii')
-logger.info(format_log_message(
-    "Initialized StatsD client",
-    host=statsd_host,
-    port=statsd_port
-))
 
 # Create FastAPI application
 app = FastAPI(
@@ -49,13 +38,13 @@ async def metrics_middleware(request: Request, call_next):
     method = request.method
     
     # Increment request counter
-    statsd_client.incr(f'requests.{method}.{path}')
+    get_metrics_client().incr(f'requests.{method}.{path}')
     
     # Call the next middleware or endpoint handler
     response = await call_next(request)
     
     # Track responses with status codes
-    statsd_client.incr(f'responses.{response.status_code}.{method}.{path}')
+    get_metrics_client().incr(f'responses.{response.status_code}.{method}.{path}')
     
     return response
 
@@ -73,9 +62,6 @@ async def startup_event():
         "Database initialized successfully"
     ))
     
-    # Set up initial metrics collection
-    update_metrics()
-    
     # Start background task for periodic metrics updates
     asyncio.create_task(periodic_metrics_update())
     
@@ -88,7 +74,7 @@ async def periodic_metrics_update():
     while True:
         try:
             # Update metrics
-            update_metrics()
+            update_db_metrics()
             
             # Wait for 5 minutes before updating again
             await asyncio.sleep(60)
@@ -101,34 +87,6 @@ async def periodic_metrics_update():
             # Wait a bit before trying again
             await asyncio.sleep(60)
 
-def update_metrics():
-    """Update application metrics including unique user count and users table count."""
-    try:
-        # Get a database session
-        db = get_db()
-        
-        # Count rows in the topics table
-        topics_row_count = db.query(func.count(Topic.user_id)).scalar()
-        
-        # Count unique user_ids in the topics table
-        active_users_count = db.query(func.count(func.distinct(Topic.user_id))).scalar()
-        
-        # Count records in the users table
-        users_unique_count = db.query(func.count(User.user_id)).scalar()
-        
-        # Send the metrics to StatsD
-        statsd_client.gauge('users.active_count', active_users_count)
-        statsd_client.gauge('users.unique_count', users_unique_count)
-        statsd_client.gauge('topics.count', topics_row_count)
-    except Exception as e:
-        logger.error(format_log_message(
-            "Error updating metrics",
-            error=str(e),
-            error_type=type(e).__name__
-        ))
-    finally:
-        if 'db' in locals():
-            db.close()
 
 # Define request and response models
 class TopicCreate(BaseModel):

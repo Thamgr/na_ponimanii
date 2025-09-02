@@ -26,6 +26,7 @@ from env.config import (
     BOT_KEYBOARD_WHAT_NEXT, BOT_THINKING_MESSAGE
 )
 from tools.logging_config import setup_logging, format_log_message
+from metrics.metrics import get_metrics_client
 
 # Set up component-specific logger
 logger = setup_logging("BOT")
@@ -439,6 +440,7 @@ async def list_topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             error=str(e),
             user_id=user_id
         ))
+        get_metrics_client().incr(f'responses.{500}.None.list_topics')
         
         await update.message.reply_text(BOT_CONNECTION_ERROR)
 
@@ -529,80 +531,62 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 # Format and send message to the user
                 title = topic_data['title']
                 explanation = topic_data.get('explanation')
+                assert explanation
+
+                # Prepare the message
+                message = BOT_TOPIC_EXPLANATION.format(title=title, explanation=explanation)
                 
-                if explanation:
-                    # Prepare the message
-                    message = BOT_TOPIC_EXPLANATION.format(title=title, explanation=explanation)
+                # Get related topics if available
+                related_topics = topic_data.get('related_topics', [])
+                
+                # Create keyboard with buttons for each related topic
+                keyboard = []
+                # Get a global reference to the counter
+                global related_topic_counter
+                
+                for related_topic in related_topics:
+                    # Store the parent topic in the global map
+                    parent_topic_map[related_topic] = title
                     
-                    # Get related topics if available
-                    related_topics = topic_data.get('related_topics', [])
+                    # Generate a unique ID for this related topic
+                    related_topic_id = related_topic_counter
+                    related_topic_counter += 1
                     
-                    if related_topics:
-                        # Create keyboard with buttons for each related topic
-                        keyboard = []
-                        # Get a global reference to the counter
-                        global related_topic_counter
-                        
-                        for related_topic in related_topics:
-                            # Store the parent topic in the global map
-                            parent_topic_map[related_topic] = title
-                            
-                            # Generate a unique ID for this related topic
-                            related_topic_id = related_topic_counter
-                            related_topic_counter += 1
-                            
-                            # Store the related topic in the map with its ID
-                            related_topic_map[related_topic_id] = related_topic
-                            
-                            # Create a short callback data with just the ID
-                            callback_data = f"add_{related_topic_id}"
-                            keyboard.append([InlineKeyboardButton(
-                                related_topic,
-                                callback_data=callback_data
-                            )])
-                            
-                            logger.info(format_log_message(
-                                "Stored topic in maps",
-                                topic_id=topic_id,
-                                related_topic=related_topic,
-                                parent_topic=title
-                            ))
-                        
-                        # Add a message about the buttons
-                        message += BOT_RELATED_TOPICS_PROMPT
-                        
-                        # Create the reply markup
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-                        
-                        # Send the message with inline buttons
-                        await update.message.reply_text(message, reply_markup=reply_markup)
-                        
-                        # Create keyboard with two buttons
-                        reply_markup = create_keyboard()
-                        
-                        # Show the keyboard again
-                        await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
-                    else:
-                        # Send the message without inline buttons
-                        await update.message.reply_text(message)
-                        
-                        # Create keyboard with two buttons
-                        reply_markup = create_keyboard()
-                        
-                        # Show the keyboard again
-                        await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
+                    # Store the related topic in the map with its ID
+                    related_topic_map[related_topic_id] = related_topic
+                    
+                    # Create a short callback data with just the ID
+                    callback_data = f"add_{related_topic_id}"
+                    keyboard.append([InlineKeyboardButton(
+                        related_topic,
+                        callback_data=callback_data
+                    )])
+                    
+                    logger.info(format_log_message(
+                        "Stored topic in maps",
+                        topic_id=topic_id,
+                        related_topic=related_topic,
+                        parent_topic=title
+                    ))
+                
+                if related_topics:
+                    # Add a message about the buttons
+                    message += BOT_RELATED_TOPICS_PROMPT
+                    
+                    # Create the reply markup
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    # Send the message with inline buttons
+                    await update.message.reply_text(message, reply_markup=reply_markup)
                 else:
-                    # No explanation available
-                    # No related topics for topics without explanations
-                    no_explanation_message = BOT_NO_EXPLANATION.format(title=title)
+                    # Send the message without inline buttons
+                    await update.message.reply_text(message)
                     
-                    await update.message.reply_text(no_explanation_message)
-                    
-                    # Create keyboard with two buttons
-                    reply_markup = create_keyboard()
-                    
-                    # Show the keyboard again
-                    await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
+                # Create keyboard with two buttons
+                reply_markup = create_keyboard()
+                
+                # Show the keyboard again
+                await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
                 
                 # Delete the topic after displaying it
                 if topic_id:
@@ -637,81 +621,7 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             error=str(e),
             user_id=user_id
         ))
-        
-        await update.message.reply_text(BOT_CONNECTION_ERROR)
-
-
-# Define a function to handle the /change_mode command
-@thinking_decorator
-async def change_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle the /change_mode command to toggle between short and long modes."""
-    # Get the user ID
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username or "Unknown"
-    
-    logger.info(format_log_message(
-        "Received /change_mode command",
-        user_id=user_id,
-        chat_id=chat_id,
-        username=username
-    ))
-    
-    # Prepare the data to send to the FastAPI server
-    data = {
-        "user_id": user_id
-    }
-    
-    # Send the request to the FastAPI server
-    try:
-        change_mode_url = f"http://{API_HOST}:{API_PORT}/change_mode"
-        
-        logger.info(format_log_message(
-            "Sending change_mode request to server",
-            url=change_mode_url,
-            method="POST",
-            payload=data
-        ))
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(change_mode_url, json=data)
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                new_mode = response_data.get('mode', 'unknown')
-                
-                logger.info(format_log_message(
-                    "Mode changed successfully",
-                    user_id=user_id,
-                    new_mode=new_mode
-                ))
-                
-                # Format and send message to the user
-                message = f"Your mode has been changed to: {new_mode}"
-                await update.message.reply_text(message)
-                
-                # Create keyboard with two buttons
-                reply_markup = create_keyboard()
-                
-                # Show the keyboard again
-                await update.message.reply_text(BOT_KEYBOARD_WHAT_NEXT, reply_markup=reply_markup)
-            else:
-                error_text = response.text
-                logger.error(format_log_message(
-                    "Error response from server when changing mode",
-                    status_code=response.status_code,
-                    error=error_text,
-                    user_id=user_id
-                ))
-                
-                await update.message.reply_text("Failed to change mode. Please try again later.")
-    
-    except Exception as e:
-        logger.error(format_log_message(
-            "Failed to send change_mode request to server",
-            error=str(e),
-            user_id=user_id
-        ))
+        get_metrics_client().incr(f'responses.{500}.None.get_topic')
         
         await update.message.reply_text(BOT_CONNECTION_ERROR)
 
@@ -805,28 +715,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try:
             # Extract the topic ID
             topic_id_str = callback_data[4:]
-            
-            try:
-                topic_id = int(topic_id_str)
-            except ValueError:
-                logger.error(format_log_message(
-                    "Invalid topic ID in callback data",
-                    callback_data=callback_data,
-                    topic_id_str=topic_id_str
-                ))
-                await query.answer("Invalid topic ID")
-                return
+            topic_id = int(topic_id_str)
             
             # Get the topic from the related topics map
             topic = related_topic_map.get(topic_id)
-            
-            if not topic:
-                logger.error(format_log_message(
-                    "Topic ID not found in related topics map",
-                    topic_id=topic_id
-                ))
-                await query.answer("Topic not found")
-                return
+            assert topic
             
             # Get the parent topic from the global map
             parent_topic_title = parent_topic_map.get(topic)
@@ -838,6 +731,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             # Send the request to the server using the common function
             success, _ = await send_add_topic_request(user_id, topic, parent_topic_title)
+            assert success
+            
+            await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
         except Exception as e:
             logger.error(format_log_message(
                 "Error processing add topic callback",
@@ -845,29 +741,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 error_type=type(e).__name__,
                 callback_data=callback_data
             ))
-            success = False
-            
-        # Answer the callback query with a notification
-        if success and topic:
-            # Clean up the global maps
-            if topic in parent_topic_map:
-                logger.info(format_log_message(
-                    "Removing topic from parent map",
-                    topic=topic
-                ))
-                del parent_topic_map[topic]
-            
-            if topic_id in related_topic_map:
-                logger.info(format_log_message(
-                    "Removing topic from related topics map",
-                    topic_id=topic_id,
-                    topic=topic
-                ))
-                del related_topic_map[topic_id]
-            
-            await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
-        else:
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR)
+            get_metrics_client().incr(f'responses.{500}.None.add_button')
+            success = False
     else:
         # Not a recognized callback
         await query.answer(BOT_UNKNOWN_COMMAND)
@@ -973,7 +849,6 @@ def main() -> None:
     ))
     application.add_handler(CommandHandler("list", list_topics_command))
     application.add_handler(CommandHandler("topic", get_topic_command))
-    application.add_handler(CommandHandler("change_mode", change_mode_command))
     application.add_handler(CallbackQueryHandler(button_callback))
     
     

@@ -7,3 +7,11 @@ mappings:
       endpoint: "$2"
     help: "Total number of HTTP requests"
     type: "counter"
+  - match: "na_ponimanii.responses.*.*.*"
+    name: "na_ponimanii_http_responses"
+    labels:
+      status_code: "$1"
+      method: "$2"
+      endpoint: "$3"
+    help: "Stats of HTTP responses"
+    type: "counter"

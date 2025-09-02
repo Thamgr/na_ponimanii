@@ -451,9 +451,6 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         
         db_topic = add_topic(user_id, topic_title, parent_topic_title=parent_topic_title)
         
-        # Update metrics after adding a new topic (might be a new user)
-        update_metrics()
-        
         background_tasks.add_task(
             generate_and_save_explanation,
             topic_id=db_topic.id,

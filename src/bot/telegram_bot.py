@@ -584,6 +584,7 @@ async def send_delete_topic_request(topic_id: int) -> bool:
 @thinking_decorator
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button clicks for adding related topics."""
+    get_metrics_client().incr(f'requests.None.add_button')
     query = update.callback_query
     
     # Get the callback data
@@ -630,6 +631,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             assert success
             
             await query.answer(BOT_TOPIC_ADDED_FROM_CALLBACK.format(topic=topic))
+            get_metrics_client().incr(f'responses.{200}.None.add_button')
         except Exception as e:
             logger.error(format_log_message(
                 "Error processing add topic callback",

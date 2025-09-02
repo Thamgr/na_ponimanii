@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import asyncio
-from sqlalchemy import func
 
 from env.config import API_HOST, API_PORT, DEFAULT_USER_MODE
 from src.server.database import init_db, add_topic, list_topics, update_topic_explanation, update_db_metrics, get_random_topic_for_user, delete_topic, Topic, User, add_user, get_mode, toggle_mode

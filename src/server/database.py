@@ -140,9 +140,7 @@ def add_topic(user_id: int, title: str, explanation: Optional[str] = None, paren
     logger.info(format_log_message(
         "Adding topic to database",
         user_id=user_id,
-        title=title,
         has_explanation=explanation is not None,
-        parent_topic_title=parent_topic_title
     ))
     
     db = get_db()
@@ -159,7 +157,6 @@ def add_topic(user_id: int, title: str, explanation: Optional[str] = None, paren
             "Topic added successfully",
             user_id=user_id,
             topic_id=topic.id,
-            title=topic.title
         ))
         
         return topic
@@ -167,7 +164,6 @@ def add_topic(user_id: int, title: str, explanation: Optional[str] = None, paren
         logger.error(format_log_message(
             "Error adding topic to database",
             user_id=user_id,
-            title=title,
             error=str(e),
             error_type=type(e).__name__
         ))
@@ -221,7 +217,6 @@ def get_random_topic_for_user(user_id: int) -> Optional[Topic]:
                 "Retrieved random topic",
                 user_id=user_id,
                 topic_id=topic.id,
-                topic_title=topic.title,
                 has_explanation=topic.explanation is not None
             ))
         
@@ -275,7 +270,6 @@ def delete_topic(topic_id: int) -> bool:
             "Topic deleted successfully",
             topic_id=topic_id,
             user_id=user_id,
-            title=title
         ))
         
         return True
@@ -329,7 +323,6 @@ def update_topic_explanation(topic_id: int, explanation: str, related_topics: Op
                 "Topic explanation and related topics updated successfully",
                 topic_id=topic_id,
                 user_id=topic.user_id,
-                title=topic.title
             ))
         else:
             logger.warning(format_log_message(
@@ -374,7 +367,6 @@ def get_topic(topic_id: int) -> Optional[Topic]:
                 "Retrieved topic",
                 topic_id=topic_id,
                 user_id=topic.user_id,
-                title=topic.title,
                 has_explanation=topic.explanation is not None
             ))
         else:

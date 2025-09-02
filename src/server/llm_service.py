@@ -111,8 +111,6 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: O
         # Send the request to the LLM
         logger.info(format_log_message(
             "Sending request to LLM for explanation",
-            topic=topic,
-            parent_topic=parent_topic,
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS
@@ -129,7 +127,6 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: O
             
             logger.info(format_log_message(
                 "Received explanation from LLM",
-                topic=topic,
                 explanation_length=len(explanation) if explanation else 0
             ))
             
@@ -137,7 +134,6 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: O
         else:
             logger.error(format_log_message(
                 "Unexpected response type from LLM",
-                topic=topic,
                 response_type=str(type(response))
             ))
             
@@ -146,7 +142,6 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: O
     except Exception as e:
         logger.error(format_log_message(
             "Error generating explanation",
-            topic=topic,
             error=str(e),
             error_type=type(e).__name__
         ))
@@ -186,7 +181,6 @@ def generate_related_topics(topic: str, explanation: Optional[str] = None) -> Li
         # Send the request to the LLM
         logger.info(format_log_message(
             "Sending request to LLM for related topics",
-            topic=topic,
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS
@@ -206,7 +200,6 @@ def generate_related_topics(topic: str, explanation: Optional[str] = None) -> Li
             
             logger.info(format_log_message(
                 "Received related topics from LLM",
-                topic=topic,
                 related_topics_count=len(topics)
             ))
             
@@ -214,7 +207,6 @@ def generate_related_topics(topic: str, explanation: Optional[str] = None) -> Li
         else:
             logger.error(format_log_message(
                 "Unexpected response type from LLM",
-                topic=topic,
                 response_type=str(type(response))
             ))
             
@@ -223,7 +215,6 @@ def generate_related_topics(topic: str, explanation: Optional[str] = None) -> Li
     except Exception as e:
         logger.error(format_log_message(
             "Error generating related topics",
-            topic=topic,
             error=str(e),
             error_type=type(e).__name__
         ))

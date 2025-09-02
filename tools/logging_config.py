@@ -7,9 +7,8 @@ from datetime import datetime
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# Configure log file name with timestamp
-current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-LOG_FILE = os.path.join(LOG_DIR, f"app_{current_time}.log")
+# Configure log file name
+LOG_FILE = os.path.join(LOG_DIR, f"app.log")
 
 # Configure logging format
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

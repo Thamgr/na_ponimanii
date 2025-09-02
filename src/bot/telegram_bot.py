@@ -158,7 +158,6 @@ async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_ti
             url=add_topic_url,
             method="POST",
             payload=data,
-            parent_topic_title=parent_topic_title
         ))
         
         async with httpx.AsyncClient() as client:
@@ -170,8 +169,6 @@ async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_ti
                     "Topic added successfully",
                     user_id=user_id,
                     topic_id=response_data['id'],
-                    topic_title=response_data['title'],
-                    parent_topic_title=parent_topic_title
                 ))
                 
                 return True, response_data
@@ -182,8 +179,6 @@ async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_ti
                     status_code=response.status_code,
                     error=error_text,
                     user_id=user_id,
-                    topic_title=topic_title,
-                    parent_topic_title=parent_topic_title
                 ))
                 
                 return False, None
@@ -192,8 +187,6 @@ async def send_add_topic_request(user_id: int, topic_title: str, parent_topic_ti
             "Failed to send add_topic request to server",
             error=str(e),
             user_id=user_id,
-            topic_title=topic_title,
-            parent_topic_title=parent_topic_title
         ))
         
         return False, None
@@ -217,8 +210,6 @@ async def add_topic(user_id: int, topic_title: str, chat_id: int, context: Conte
         "Adding topic",
         user_id=user_id,
         chat_id=chat_id,
-        topic_title=topic_title,
-        parent_topic_title=parent_topic_title
     ))
     
     # Check if topic title is empty
@@ -298,7 +289,6 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         user_id=user_id,
         chat_id=chat_id,
         username=username,
-        topic_title=topic_title
     ))
     
     # Add the topic (no parent topic for topics added directly by the user)
@@ -530,7 +520,6 @@ async def get_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     "Retrieved random topic",
                     user_id=user_id,
                     topic_id=topic_data.get('id'),
-                    topic_title=topic_data.get('title'),
                     has_explanation=topic_data.get('explanation') is not None
                 ))
                 
@@ -845,8 +834,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.info(format_log_message(
                 "Retrieved topic from maps",
                 topic_id=topic_id,
-                topic=topic,
-                parent_topic_title=parent_topic_title
             ))
             
             # Send the request to the server using the common function

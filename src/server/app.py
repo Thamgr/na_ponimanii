@@ -228,8 +228,6 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
     logger.info(format_log_message(
         "Starting background task to generate explanation and related topics",
         topic_id=topic_id,
-        topic_title=topic_title,
-        parent_topic_title=parent_topic_title,
         user_id=user_id
     ))
     
@@ -248,8 +246,6 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
         logger.info(format_log_message(
             "Requesting explanation from LLM service",
             topic_id=topic_id,
-            topic_title=topic_title,
-            parent_topic_title=parent_topic_title,
             mode=mode
         ))
         
@@ -258,7 +254,6 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
         logger.info(format_log_message(
             "Requesting related topics from LLM service with explanation context",
             topic_id=topic_id,
-            topic_title=topic_title
         ))
         
         related_topics = generate_related_topics(topic_title, explanation)
@@ -268,7 +263,6 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
             logger.error(format_log_message(
                 "Failed to update topic with explanation and related topics",
                 topic_id=topic_id,
-                topic_title=topic_title
             ))
         else:
             logger.info(format_log_message(
@@ -281,7 +275,6 @@ async def generate_and_save_explanation(topic_id: int, topic_title: str, parent_
         logger.error(format_log_message(
             "Unexpected error when generating explanation or related topics",
             topic_id=topic_id,
-            topic_title=topic_title,
             error=str(e),
             error_type=type(e).__name__
         ))
@@ -346,7 +339,6 @@ async def bot_get_random_topic(request: Request):
             "Retrieved random topic",
             user_id=user_id,
             topic_id=topic.id,
-            topic_title=topic.title,
             has_explanation=topic.explanation is not None
         ))
         
@@ -383,7 +375,6 @@ async def bot_get_random_topic(request: Request):
                 logger.info(format_log_message(
                     "Generating related topics on-the-fly with explanation context",
                     topic_id=topic.id,
-                    topic_title=topic.title
                 ))
                 
                 related_topics = generate_related_topics(topic.title, topic.explanation)
@@ -400,7 +391,6 @@ async def bot_get_random_topic(request: Request):
                 logger.error(format_log_message(
                     "Error generating related topics",
                     topic_id=topic.id,
-                    topic_title=topic.title,
                     error=str(e),
                     error_type=type(e).__name__
                 ))
@@ -484,8 +474,6 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         logger.info(format_log_message(
             "Processing add_topic request",
             user_id=user_id,
-            topic_title=topic_title,
-            parent_topic_title=parent_topic_title
         ))
         
         # Check if topic title is empty
@@ -501,7 +489,6 @@ async def bot_add_topic(request: Request, background_tasks: BackgroundTasks):
         logger.info(format_log_message(
             "Adding topic to database",
             user_id=user_id,
-            topic_title=topic_title
         ))
         
         db_topic = add_topic(user_id, topic_title, parent_topic_title=parent_topic_title)
@@ -573,7 +560,6 @@ async def bot_list_topics(request: Request):
         
         logger.debug(format_log_message(
             "Parsed list_topics request body",
-            data=data
         ))
         
         # Validate required fields

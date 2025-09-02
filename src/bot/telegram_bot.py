@@ -4,6 +4,7 @@ import sys
 import os
 import time
 import asyncio
+import random
 from typing import Tuple, Dict, Optional
 
 # Add parent directory to path to allow imports from other modules
@@ -59,7 +60,7 @@ def thinking_decorator(handler_func):
         # Send the "Thinking..." message
         thinking_message = await context.bot.send_message(
             chat_id=chat_id,
-            text=BOT_THINKING_MESSAGE
+            text=random.choice(BOT_THINKING_MESSAGE_VARIANTS)
         )
         
         # Store the message ID in the context

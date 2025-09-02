@@ -526,27 +526,6 @@ def get_mode(user_id: int) -> str:
     finally:
         db.close()
 
-def toggle_mode(user_id: int) -> str:
-    """
-    Toggle the mode for a specific user between "short" and "long".
-    
-    Args:
-        user_id (int): ID of the user
-    
-    Returns:
-        str: The new mode after toggling
-    """
-    # Get current mode
-    current_mode = get_mode(user_id)
-    
-    # Toggle mode
-    new_mode = "short" if current_mode == "long" else "long"
-    
-    # Update user with new mode
-    add_user(user_id, new_mode)
-    
-    return new_mode
-
 
 def update_db_metrics():
     """Update application metrics including unique user count and users table count."""

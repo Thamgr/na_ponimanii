@@ -92,13 +92,8 @@ def generate_explanation(topic: str, parent_topic: Optional[str] = None, mode: O
             user_prompt = EXPLANATION_USER_PROMPT_TEMPLATE.format(topic=topic)
         
         # Select the appropriate system prompt based on mode
-        system_prompt = EXPLANATION_SYSTEM_PROMPT  # Default prompt for backward compatibility
-        
-        # Choose the appropriate prompt based on the mode
-        if mode == "short":
-            system_prompt = EXPLANATION_SYSTEM_PROMPT_SHORT
-        else:  # "long" mode
-            system_prompt = EXPLANATION_SYSTEM_PROMPT_LONG
+        system_prompt = EXPLANATION_SYSTEM_PROMPT 
+
         # Create messages for the LLM
         messages = [
             SystemMessage(content=system_prompt),

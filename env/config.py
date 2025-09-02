@@ -85,6 +85,7 @@ BOT_TOPIC_LENGTH_ERROR = 'Тема должна быть от 3 до 30 симв
 
 # Thinking message
 BOT_THINKING_MESSAGE = 'Размышляю...'
+BOT_THINKING_MESSAGE_VARIANTS = ['Размышляю...', 'Думаю...', 'Анализирую...', 'Кумекаю...']
 
 # List topics command
 BOT_NO_TOPICS = 'У вас пока нет сохраненных тем.'
@@ -104,9 +105,8 @@ BOT_TOPIC_ADDED_FROM_CALLBACK_ERROR = "Не удалось добавить те
 BOT_UNKNOWN_COMMAND = "Неизвестная команда"
 
 # Keyboard buttons
-BOT_KEYBOARD_ADD_TOPIC = "Добавить тему"
-BOT_KEYBOARD_STUDY_TOPIC = "Изучить тему"
-BOT_KEYBOARD_WHAT_NEXT = "Что вы хотите сделать дальше?"
+BOT_KEYBOARD_STUDY_TOPIC = "Изучить случайную тему"
+BOT_KEYBOARD_WHAT_NEXT = "Что изучим теперь?"
 
 # User info
 # Default mode
